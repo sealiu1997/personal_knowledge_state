@@ -1,0 +1,33 @@
+from pks.models import CapsuleDomain, ProjectMetadata
+from pks.storage import CapsuleStore
+
+
+def test_store_initializes_independent_home(tmp_path) -> None:
+    store = CapsuleStore(tmp_path / "pks-home")
+
+    store.ensure_home()
+
+    assert (store.home / "capsules").is_dir()
+    assert (store.home / "domains" / "dev").is_dir()
+    assert (store.home / "domains" / "content").is_dir()
+    assert (store.home / "domains" / "research").is_dir()
+    assert (store.home / "config.yaml").is_file()
+
+
+def test_store_creates_minimal_capsule(tmp_path) -> None:
+    store = CapsuleStore(tmp_path / "pks-home")
+    project = ProjectMetadata(
+        project_id="pks",
+        name="PKS",
+        capsule_type="SoftwareCapsule",
+        domain=CapsuleDomain.DEV,
+        stage="P0",
+        current_goal="Create the P0 kernel slice.",
+    )
+
+    capsule_path = store.create_capsule(project)
+
+    assert (capsule_path / "project.yaml").is_file()
+    assert (capsule_path / "PKS_PROJECT.md").is_file()
+    assert (capsule_path / "claims").is_dir()
+    assert (capsule_path / "journal.md").is_file()
