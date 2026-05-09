@@ -8,8 +8,10 @@ from pks.kernel.capsule import ProjectRegistry
 from pks.kernel.claim import ClaimEngine
 from pks.kernel.render import ContextEngine, ProjectionEngine
 from pks.kernel.review import ReviewStrategy
+from pks.kernel.snapshot import SnapshotManager
 from pks.kernel.tracking import ProjectTracker
 from pks.models import (
+    CapsuleResolution,
     Claim,
     ClaimHealth,
     ClaimStatus,
@@ -19,6 +21,7 @@ from pks.models import (
     ProjectMetadata,
     ReviewAction,
     ReviewDecision,
+    SnapshotRecord,
 )
 
 
@@ -43,6 +46,17 @@ class Kernel:
 
     def load_capsule(self, project_id: str) -> ProjectMetadata:
         return self.registry.load_project(project_id)
+
+    def update_capsule(self, project_id: str, **updates: object) -> ProjectMetadata:
+        project = self.registry.update_project(project_id, **updates)
+        AuditLog(self.registry.capsule_path(project_id)).append(
+            "capsule.updated",
+            {"project_id": project_id, "fields": sorted(updates.keys())},
+        )
+        return project
+
+    def resolve_capsule(self, project_id: str) -> CapsuleResolution:
+        return self.registry.resolve_project(project_id)
 
     def list_capsules(self) -> list[ProjectMetadata]:
         return self.registry.list_projects()
@@ -74,6 +88,9 @@ class Kernel:
 
     def accept_claim(self, project_id: str, claim_id: str) -> Claim:
         return self._claim_engine(project_id).accept_claim(claim_id)
+
+    def load_claim(self, project_id: str, claim_id: str) -> Claim:
+        return self._claim_engine(project_id).load_claim(claim_id)
 
     def expire_claim(self, project_id: str, claim_id: str) -> Claim:
         return self._claim_engine(project_id).expire_claim(claim_id)
@@ -159,6 +176,13 @@ class Kernel:
             project.tracking.last_synced_commit = current_commit
             self.registry.save_project(project)
         return result
+
+    def create_snapshot(self, message: str) -> SnapshotRecord:
+        self.registry.ensure_home()
+        return SnapshotManager(self.home).create_snapshot(message)
+
+    def list_snapshots(self) -> list[SnapshotRecord]:
+        return SnapshotManager(self.home).list_snapshots()
 
     def render_context(self, project_id: str) -> str:
         project = self.load_capsule(project_id)

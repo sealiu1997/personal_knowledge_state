@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pks.kernel.capsule.layout import domain_modules, render_project_doc
 from pks.kernel.storage import read_yaml, write_yaml
-from pks.models import CapsuleDomain, Claim, DomainPolicy, ProjectMetadata
+from pks.models import CapsuleDomain, CapsuleResolution, Claim, DomainPolicy, ProjectMetadata
 from pks.paths import resolve_pks_home
 
 
@@ -69,9 +69,25 @@ class ProjectRegistry:
             project.model_dump(mode="json", exclude_none=True),
         )
 
+    def update_project(self, project_id: str, **updates: object) -> ProjectMetadata:
+        current = self.load_project(project_id)
+        data = current.model_dump(mode="python")
+        for key, value in updates.items():
+            if value is not None:
+                data[key] = value
+        updated = ProjectMetadata.model_validate(data)
+        self.save_project(updated)
+        return updated
+
     def load_project(self, project_id: str) -> ProjectMetadata:
         data = read_yaml(self.capsule_path(project_id) / "project.yaml")
         return ProjectMetadata.model_validate(data)
+
+    def resolve_project(self, project_id: str) -> CapsuleResolution:
+        return CapsuleResolution(
+            project=self.load_project(project_id),
+            capsule_path=self.capsule_path(project_id),
+        )
 
     def list_projects(self) -> list[ProjectMetadata]:
         if not self.capsules_dir.exists():

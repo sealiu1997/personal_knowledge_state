@@ -55,6 +55,13 @@ accepted
 
 `stale` 是计算属性，不进入状态枚举。
 
+`mark_claim_stale` 只记录一次 stale 检查结果，不改变 `ClaimStatus`。如果 evidence 失效或超过领域 stale 周期，Claim 会在 health/context/projection 中被视为 stale，但仍保持原状态。
+
+P0 CLI 生命周期命令：
+- `pks claim expire <project_id> <claim_id>`
+- `pks claim dispute <project_id> <claim_id>`
+- `pks claim supersede <project_id> <old_claim_id> ...`
+
 ## 冲突规则
 
 冲突 key 是 `(subject, predicate)`。
@@ -64,6 +71,7 @@ accepted
 - 新 Claim 被接受时若发现冲突，新旧 Claim 都进入 `disputed`。
 - 如果双方 `qualifier` 不同，视作 scoped complement，不自动冲突。
 - `supersedes` 必须指向相同 `(subject, predicate)` 的旧 Claim。
+- CLI supersede 复用旧 Claim 的 `subject` 和 `predicate`，新 Claim 只要求显式提供新 `object` 与 evidence。
 
 ## 审核策略
 

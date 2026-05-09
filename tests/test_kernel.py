@@ -58,9 +58,14 @@ def test_kernel_creates_loads_and_lists_capsules(tmp_path) -> None:
     capsule_path = kernel.create_capsule(project(tmp_path))
 
     loaded = kernel.load_capsule("pks")
+    updated = kernel.update_capsule("pks", stage="P0 closure", current_goal="Close P0")
+    resolved = kernel.resolve_capsule("pks")
     listed = kernel.list_capsules()
 
     assert loaded.name == "PKS"
+    assert updated.stage == "P0 closure"
+    assert resolved.capsule_path == capsule_path
+    assert resolved.project.current_goal == "Close P0"
     assert listed[0].project_id == "pks"
     assert (capsule_path / "architecture.md").is_file()
     assert (kernel.home / "domains" / "dev" / "claim_policy.yaml").is_file()
@@ -113,9 +118,13 @@ def test_health_marks_stale_claims_and_context_excludes_them(tmp_path) -> None:
     kernel.submit_claim("pks", stale_claim)
 
     report = kernel.health_check("pks", today=date(2026, 5, 9))
+    stale_result = kernel.mark_claim_stale("pks", "CLM-2026-0003")
+    stored_claim = kernel.load_claim("pks", "CLM-2026-0003")
     rendered = kernel.render_context("pks")
 
     assert report.stale == 1
+    assert stale_result.stale
+    assert stored_claim.status_value == ClaimStatus.ACCEPTED.value
     assert "independent PKS home" not in rendered
 
 
@@ -147,6 +156,33 @@ def test_projection_can_be_written_without_being_source_of_truth(tmp_path) -> No
     assert "This file is generated from PKS Kernel state" in projection_path.read_text(
         encoding="utf-8"
     )
+
+
+def test_claim_lifecycle_expire_dispute_and_supersede(tmp_path) -> None:
+    kernel = Kernel(tmp_path / "pks-home")
+    kernel.create_capsule(project(tmp_path))
+    kernel.submit_claim("pks", claim("CLM-2026-0006", object_="YAML"))
+    kernel.submit_claim(
+        "pks",
+        claim("CLM-2026-0007", predicate="has_projection", object_="PKS.md"),
+    )
+    new_claim = claim(
+        "CLM-2026-0008",
+        predicate="has_projection",
+        object_="generated PKS.md",
+    )
+
+    expired = kernel.expire_claim("pks", "CLM-2026-0006")
+    disputed = kernel.mark_claim_disputed("pks", "CLM-2026-0006")
+    superseding = kernel.supersede_claim("pks", "CLM-2026-0007", new_claim)
+    old_claim = kernel.load_claim("pks", "CLM-2026-0007")
+
+    assert expired.status_value == ClaimStatus.EXPIRED.value
+    assert disputed.status_value == ClaimStatus.DISPUTED.value
+    assert superseding.status_value == ClaimStatus.ACCEPTED.value
+    assert superseding.supersedes == "CLM-2026-0007"
+    assert old_claim.status_value == ClaimStatus.SUPERSEDED.value
+    assert old_claim.superseded_by == "CLM-2026-0008"
 
 
 def test_context_injects_domain_taste_and_style_claims(tmp_path) -> None:
@@ -191,9 +227,30 @@ def test_sync_project_reports_git_diff_for_watched_paths(tmp_path) -> None:
     run_git(project_root, "commit", "-m", "update tracked")
 
     second_sync = kernel.sync_project("pks")
+    updated_project = kernel.load_capsule("pks")
 
     assert first_sync["git_available"] is True
+    assert updated_project.tracking.last_synced_commit == second_sync["current_commit"]
     assert second_sync["changed_paths"] == ["tracked.md"]
+
+
+def test_explicit_snapshot_create_and_list_commits_pks_home(tmp_path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is not available")
+
+    kernel = Kernel(tmp_path / "pks-home")
+    kernel.create_capsule(project(tmp_path))
+
+    snapshot = kernel.create_snapshot("initial pks snapshot")
+    snapshots = kernel.list_snapshots()
+    unchanged = kernel.create_snapshot("no state changes")
+
+    assert snapshot.created
+    assert len(snapshot.commit_id) == 40
+    assert snapshots[0].commit_id == snapshot.commit_id
+    assert snapshots[0].message == "initial pks snapshot"
+    assert unchanged.commit_id == snapshot.commit_id
+    assert not unchanged.created
 
 
 def run_git(root, *args: str) -> None:

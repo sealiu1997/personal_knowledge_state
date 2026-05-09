@@ -18,6 +18,7 @@ src/pks/kernel/
 ├── review/                # 领域策略驱动的审核判断
 ├── tracking/              # evidence 完整性与 Git diff 跟踪
 ├── render/                # Context Pack 与 PKS.md 投影
+├── snapshot/              # 显式 PKS home Git 快照
 ├── audit/                 # append-only audit log
 └── storage/               # YAML 读写基础设施
 ```
@@ -25,10 +26,11 @@ src/pks/kernel/
 ## 对外用例
 
 `Kernel` 暴露稳定用例方法：
-- Capsule：`create_capsule`、`load_capsule`、`list_capsules`
-- Claim：`submit_claim`、`accept_claim`、`expire_claim`、`supersede_claim`、`mark_claim_disputed`、`list_claims`
+- Capsule：`create_capsule`、`load_capsule`、`update_capsule`、`resolve_capsule`、`list_capsules`
+- Claim：`submit_claim`、`load_claim`、`accept_claim`、`expire_claim`、`supersede_claim`、`mark_claim_stale`、`mark_claim_disputed`、`list_claims`
 - 健康与跟踪：`check_evidence`、`health_check`、`sync_project`
 - 输出：`render_context`、`render_projection`
+- 快照：`create_snapshot`、`list_snapshots`
 
 `generate_pks_new_params` 仅做显式字段校验，不做语义推断。
 
@@ -44,6 +46,7 @@ ClaimEngine     ── ClaimStore / audit.log
 ReviewStrategy  ── claim_policy.yaml
 ProjectTracker  ── project folder / Git / evidence source
 Render engines  ── ProjectMetadata + accepted non-stale Claims
+SnapshotManager ── PKS home Git repo
 ```
 
 模块之间保持单向依赖：
@@ -51,7 +54,18 @@ Render engines  ── ProjectMetadata + accepted non-stale Claims
 - Render 只接收数据模型，不读存储。
 - ClaimEngine 不读取领域策略；审核由 Kernel 调 ReviewStrategy。
 - ProjectTracker 不修改 Claim 状态，只返回 evidence issue 和 diff 结果。
+- SnapshotManager 只在显式调用时提交 PKS home；普通状态变更只写 audit。
 - `PKS.md` 是输出投影，不参与 Kernel 输入。
+
+## CLI 适配
+
+P0 CLI 只调用 Kernel：
+- `pks project sync <project_id>`
+- `pks claim expire <project_id> <claim_id>`
+- `pks claim dispute <project_id> <claim_id>`
+- `pks claim supersede <project_id> <old_claim_id> ...`
+- `pks snapshot create --message "..."`
+- `pks snapshot list`
 
 ## 健康检查
 
@@ -70,6 +84,7 @@ Render engines  ── ProjectMetadata + accepted non-stale Claims
 - TasteAndStyle Claim 注入 Context Pack 和 `PKS.md`。
 - Git diff watched paths 同步接口。
 - append-only audit log。
+- 显式 SnapshotManager，必要时初始化 PKS home Git repo。
 
 暂缓：
 - SQLite 索引。

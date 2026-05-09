@@ -244,6 +244,11 @@ class ProjectMetadata(BaseModel):
         return self.tracking.project_path or self.external_project_path
 
 
+class CapsuleResolution(BaseModel):
+    project: ProjectMetadata
+    capsule_path: Path
+
+
 class EvidenceIssue(BaseModel):
     claim_id: str
     source_ref: str
@@ -281,3 +286,10 @@ class HealthReport(BaseModel):
             "superseded": self.superseded,
             "evidence_issue_count": len(self.evidence_issues),
         }
+
+
+class SnapshotRecord(BaseModel):
+    commit_id: str
+    message: str
+    created_at: datetime | None = None
+    created: bool = True

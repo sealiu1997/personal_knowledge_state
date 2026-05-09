@@ -21,6 +21,7 @@
 | `kernel/review/` | 读取 `claim_policy.yaml`，给出自动接受、人工审核或拒绝建议。 |
 | `kernel/tracking/` | 检查 evidence 引用完整性；Git diff 跟踪 watched paths。 |
 | `kernel/render/` | 生成 Context Pack 和 `PKS.md`，排除 candidate、stale、disputed、expired、superseded Claim。 |
+| `kernel/snapshot/` | 显式创建和列出 PKS home Git 快照。 |
 | `kernel/audit/` | 追加记录重要状态变化。 |
 | `kernel/storage/` | YAML 读写基础设施。 |
 
@@ -33,13 +34,14 @@
 - 领域级 `claim_policy.yaml` 会影响审核与 stale 计算。
 - Context Pack 和 `PKS.md` 只输出 accepted 且非 stale 的 Claim。
 - CLI 的 `claim add`、`claim accept`、`claim list`、`health`、`project` 类命令只调用 Kernel。
+- CLI 已覆盖 `project sync`、`claim expire/dispute/supersede`、`snapshot create/list`。
 - 测试覆盖 schema、存储、Kernel 工作流、冲突检测、健康检查、投影。
 
 ## 暂缓项
 
 - SQLite 索引：等 Claim 查询量或 tracking 查询需要时再引入。
 - Web UI、MCP Server：不属于 P0 本轮实现。
-- Git baseline commit：当前目录还不是 Git 仓库；初始化和提交基线需要用户确认后执行。
+- Snapshot 自动触发：P0 明确不做，避免状态变更产生隐藏 Git 副作用。
 
 ## 进度
 
@@ -49,6 +51,7 @@
 - [x] 实现 Kernel 模块。
 - [x] 接入 CLI。
 - [x] 补齐测试与文档状态。
+- [x] 严格收口 Snapshot、生命周期 CLI、project sync 和 update/resolve 用例。
 
 ## 本轮结果
 
@@ -59,10 +62,11 @@
 - Claim 写入走 `submit_claim`；高置信 factual Claim 可按领域策略自动接受；冲突 Claim 进入人工审核路径。
 - `stale` 保持为计算属性，由 `pks health`、Context Pack 和 `PKS.md` 投影共同使用。
 - `ProjectTracker` 已支持 evidence 完整性检查和 Git diff watched paths 同步。
-- CLI 已通过 Kernel 接入 `new`、`context`、`health`、`claim add/accept/list`、`project list/projection`。
+- `SnapshotManager` 已支持显式 `create_snapshot` 和 `list_snapshots`。
+- CLI 已通过 Kernel 接入 `new`、`context`、`health`、`claim add/accept/list/expire/dispute/supersede`、`project list/sync/projection`、`snapshot create/list`。
 - 核心设计文档已同步为 `pks_kernel_design.md`、`pks_claim_design.md`、`pks_capsule_design.md`。
 
 验证：
-- `.venv/bin/python -m pytest -q`：14 passed。
+- `.venv/bin/python -m pytest -q`：18 passed。
 - `.venv/bin/python -m ruff check .`：All checks passed。
 - CLI smoke：`init-home → new → claim add → context/health` 通过。

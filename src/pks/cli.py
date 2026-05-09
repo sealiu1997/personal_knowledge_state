@@ -23,8 +23,10 @@ app = typer.Typer(
 )
 claim_app = typer.Typer(help="Manage evidence-backed Claims.")
 project_app = typer.Typer(help="Manage Capsules and projections.")
+snapshot_app = typer.Typer(help="Create and list explicit PKS home snapshots.")
 app.add_typer(claim_app, name="claim")
 app.add_typer(project_app, name="project")
+app.add_typer(snapshot_app, name="snapshot")
 
 
 @app.callback()
@@ -183,6 +185,65 @@ def claim_accept(
     typer.echo(f"{claim.claim_id}: {claim.status_value}")
 
 
+@claim_app.command("expire")
+def claim_expire(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    claim_id: Annotated[str, typer.Argument(help="Claim id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    claim = Kernel(home).expire_claim(project_id, claim_id)
+    typer.echo(f"{claim.claim_id}: {claim.status_value}")
+
+
+@claim_app.command("dispute")
+def claim_dispute(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    claim_id: Annotated[str, typer.Argument(help="Claim id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    claim = Kernel(home).mark_claim_disputed(project_id, claim_id)
+    typer.echo(f"{claim.claim_id}: {claim.status_value}")
+
+
+@claim_app.command("supersede")
+def claim_supersede(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    old_claim_id: Annotated[str, typer.Argument(help="Old Claim id.")],
+    new_claim_id: Annotated[str, typer.Option("--claim-id", help="New Claim id.")],
+    object_: Annotated[str, typer.Option("--object", help="New Claim object.")],
+    source_ref: Annotated[str, typer.Option(help="Evidence source reference.")],
+    excerpt: Annotated[str, typer.Option(help="Evidence excerpt.")],
+    confidence: Annotated[float, typer.Option(help="Confidence from 0.0 to 1.0.")] = 0.0,
+    content: Annotated[str, typer.Option(help="Human-readable content.")] = "",
+    created_by: Annotated[str, typer.Option(help="Creator id.")] = "human",
+    tags: Annotated[str, typer.Option(help="Comma-separated tags.")] = "",
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    kernel = Kernel(home)
+    old_claim = kernel.load_claim(project_id, old_claim_id)
+    new_claim = Claim(
+        claim_id=new_claim_id,
+        subject=old_claim.subject,
+        predicate=old_claim.predicate,
+        object=object_,
+        content=content,
+        type=old_claim.type,
+        domain=old_claim.domain,
+        tags=_split_csv(tags) or old_claim.tags,
+        confidence=confidence,
+        created_by=created_by,
+        evidence=[
+            Evidence(
+                source_ref=source_ref,
+                relation=Relation.SUPERSEDES,
+                excerpt=excerpt,
+            )
+        ],
+    )
+    claim = kernel.supersede_claim(project_id, old_claim_id, new_claim)
+    typer.echo(f"{old_claim_id} -> {claim.claim_id}: {claim.status_value}")
+
+
 @claim_app.command("list")
 def claim_list(
     project_id: Annotated[str, typer.Argument(help="Project id.")],
@@ -208,6 +269,22 @@ def project_list(
         typer.echo(f"{project.project_id}\t{project.domain_value}\t{project.name}")
 
 
+@project_app.command("sync")
+def project_sync(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    result = Kernel(home).sync_project(project_id)
+    typer.echo(f"Git available: {result['git_available']}")
+    typer.echo(f"Current commit: {result['current_commit']}")
+    changed_paths = result.get("changed_paths") or []
+    typer.echo(f"Changed paths: {len(changed_paths)}")
+    for path in changed_paths:
+        typer.echo(f"- {path}")
+    evidence_issues = result.get("evidence_issues") or []
+    typer.echo(f"Evidence issues: {len(evidence_issues)}")
+
+
 @project_app.command("projection")
 def project_projection(
     project_id: Annotated[str, typer.Argument(help="Project id.")],
@@ -219,6 +296,29 @@ def project_projection(
 ) -> None:
     result = Kernel(home).render_projection(project_id, write=write)
     typer.echo(result)
+
+
+@snapshot_app.command("create")
+def snapshot_create(
+    message: Annotated[str, typer.Option("--message", "-m", help="Snapshot message.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    snapshot = Kernel(home).create_snapshot(message)
+    created = "created" if snapshot.created else "unchanged"
+    typer.echo(f"{snapshot.commit_id}\t{created}\t{snapshot.message}")
+
+
+@snapshot_app.command("list")
+def snapshot_list(
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    snapshots = Kernel(home).list_snapshots()
+    if not snapshots:
+        typer.echo("No snapshots.")
+        return
+    for snapshot in snapshots:
+        created_at = snapshot.created_at.isoformat() if snapshot.created_at else ""
+        typer.echo(f"{snapshot.commit_id}\t{created_at}\t{snapshot.message}")
 
 
 def _split_csv(value: str) -> list[str]:

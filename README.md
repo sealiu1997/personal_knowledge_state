@@ -32,8 +32,8 @@ This repository has started the P0 implementation:
 - 项目元信息、跟踪配置、领域策略与证据支撑 Claim 的 Pydantic 模型
 - Independent PKS home resolution, defaulting to `~/.pks`
 - 独立 PKS home 路径解析，默认是 `~/.pks`
-- Kernel modules for Project Registry, Claim Engine, Review Strategy, Tracker, Context, Projection, and Audit Log
-- Kernel 模块：项目注册、Claim 引擎、审核策略、项目跟踪、上下文、投影与审计日志
+- Kernel modules for Project Registry, Claim Engine, Review Strategy, Tracker, Context, Projection, Snapshot, and Audit Log
+- Kernel 模块：项目注册、Claim 引擎、审核策略、项目跟踪、上下文、投影、快照与审计日志
 - Kernel code is split by business boundary under `src/pks/kernel/`
 - Kernel 代码已按业务边界拆分在 `src/pks/kernel/`
 - YAML-backed Capsule and Claim storage with default domain `claim_policy.yaml`
@@ -42,8 +42,8 @@ This repository has started the P0 implementation:
 - 领域级 TasteAndStyle Claim 会注入 Context Pack 与 `PKS.md`
 - Dynamic Markdown Context Pack and generated `PKS.md` projection
 - 动态 Markdown Context Pack 与生成式 `PKS.md` 投影
-- Typer CLI entrypoint with `init-home`, `new`, `context`, `health`, `claim`, and `project`
-- Typer CLI 入口，包含 `init-home`、`new`、`context`、`health`、`claim` 和 `project`
+- Typer CLI entrypoint with `init-home`, `new`, `context`, `health`, `claim`, `project`, and `snapshot`
+- Typer CLI 入口，包含 `init-home`、`new`、`context`、`health`、`claim`、`project` 和 `snapshot`
 
 ## Local Development / 本地开发
 
@@ -65,6 +65,7 @@ CLI 冒烟测试：
 .venv/bin/pks claim add pks --claim-id CLM-001 --subject PKS --predicate stores_state_in --object "independent PKS home" --source-ref manual --excerpt "用户手动设定" --confidence 0.9 --home /private/tmp/pks-smoke-home
 .venv/bin/pks context pks --home /private/tmp/pks-smoke-home
 .venv/bin/pks health pks --home /private/tmp/pks-smoke-home
+.venv/bin/pks snapshot create --message "smoke snapshot" --home /private/tmp/pks-smoke-home
 ```
 
 ## Design Boundaries / 设计边界

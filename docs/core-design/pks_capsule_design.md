@@ -76,6 +76,14 @@ BaseCapsule 文件：
 - 生成领域模块文件。
 - 确保领域 `claim_policy.yaml` 和 TasteAndStyle Claim 目录存在。
 
+## 读取与更新
+
+P0 Kernel 支持：
+- `load_capsule`：读取 `project.yaml`。
+- `update_capsule`：显式更新 `project.yaml` 字段。
+- `resolve_capsule`：返回 `ProjectMetadata` 与 Capsule 路径。
+- `list_capsules`：列出 PKS home 下所有 Capsule。
+
 ## 领域策略
 
 每个领域都有默认 `claim_policy.yaml`。P0 用它控制：
@@ -101,3 +109,13 @@ P0 支持两种检查：
 - Git diff watched paths：记录 `last_synced_commit`，同步时返回变更路径。
 
 非 Git 项目退化为 evidence 完整性检查。
+
+`pks project sync <project_id>` 调用 Kernel `sync_project`。同步会写回 `tracking.last_synced_commit`，但不会修改 Claim 状态。
+
+## 快照
+
+P0 快照是显式操作：
+- `pks snapshot create --message "..."`
+- `pks snapshot list`
+
+SnapshotManager 使用 PKS home 自身的 Git 仓库。若 PKS home 尚未初始化 Git，首次显式快照会执行初始化。普通 Capsule 或 Claim 状态变更只写 audit log，不自动提交快照。

@@ -1,0 +1,173 @@
+import shutil
+import subprocess
+
+import pytest
+from typer.testing import CliRunner
+
+from pks.cli import app
+
+runner = CliRunner()
+
+
+def test_cli_claim_lifecycle_and_snapshot_commands(tmp_path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is not available")
+
+    home = tmp_path / "pks-home"
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            "pks",
+            "--name",
+            "PKS",
+            "--capsule-type",
+            "SoftwareCapsule",
+            "--domain",
+            "dev",
+            "--stage",
+            "P0",
+            "--project-path",
+            str(project_root),
+            "--home",
+            str(home),
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0
+
+    add_claim(home, "CLM-CLI-001", "stores_state_in", "YAML")
+    result = runner.invoke(app, ["claim", "expire", "pks", "CLM-CLI-001", "--home", str(home)])
+    assert result.exit_code == 0
+    assert "expired" in result.output
+
+    add_claim(home, "CLM-CLI-002", "has_projection", "PKS.md")
+    result = runner.invoke(app, ["claim", "dispute", "pks", "CLM-CLI-002", "--home", str(home)])
+    assert result.exit_code == 0
+    assert "disputed" in result.output
+
+    add_claim(home, "CLM-CLI-003", "uses_kernel", "facade")
+    result = runner.invoke(
+        app,
+        [
+            "claim",
+            "supersede",
+            "pks",
+            "CLM-CLI-003",
+            "--claim-id",
+            "CLM-CLI-004",
+            "--object",
+            "facade plus modules",
+            "--source-ref",
+            "manual",
+            "--excerpt",
+            "用户手动设定",
+            "--confidence",
+            "0.9",
+            "--home",
+            str(home),
+        ],
+    )
+    assert result.exit_code == 0
+    assert "CLM-CLI-003 -> CLM-CLI-004" in result.output
+
+    result = runner.invoke(
+        app,
+        ["snapshot", "create", "--message", "cli snapshot", "--home", str(home)],
+    )
+    assert result.exit_code == 0
+    assert "cli snapshot" in result.output
+
+    result = runner.invoke(app, ["snapshot", "list", "--home", str(home)])
+    assert result.exit_code == 0
+    assert "cli snapshot" in result.output
+
+
+def test_cli_project_sync_reports_git_state(tmp_path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is not available")
+
+    home = tmp_path / "pks-home"
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "tracked.md").write_text("v1", encoding="utf-8")
+    run_git(project_root, "init")
+    run_git(project_root, "add", "tracked.md")
+    run_git(project_root, "commit", "-m", "initial")
+
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            "pks",
+            "--name",
+            "PKS",
+            "--capsule-type",
+            "SoftwareCapsule",
+            "--domain",
+            "dev",
+            "--stage",
+            "P0",
+            "--project-path",
+            str(project_root),
+            "--watched-paths",
+            "tracked.md",
+            "--home",
+            str(home),
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0
+
+    result = runner.invoke(app, ["project", "sync", "pks", "--home", str(home)])
+    assert result.exit_code == 0
+    assert "Git available: True" in result.output
+
+
+def add_claim(home, claim_id: str, predicate: str, object_: str) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "claim",
+            "add",
+            "pks",
+            "--claim-id",
+            claim_id,
+            "--subject",
+            "PKS",
+            "--predicate",
+            predicate,
+            "--object",
+            object_,
+            "--source-ref",
+            "manual",
+            "--excerpt",
+            "用户手动设定",
+            "--confidence",
+            "0.9",
+            "--home",
+            str(home),
+        ],
+    )
+    assert result.exit_code == 0
+
+
+def run_git(root, *args: str) -> None:
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=PKS Test",
+            "-c",
+            "user.email=pks-test@example.invalid",
+            *args,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
