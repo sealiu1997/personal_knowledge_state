@@ -38,8 +38,8 @@ submit_claim
 ReviewStrategy
   ├── reject
   ├── candidate/manual review
-  └── auto accept
-        ↓
+  └── auto_accept recommendation
+        ↓ 人工确认或后续策略自动合并
 accepted
   ├── disputed
   ├── expired
@@ -56,6 +56,8 @@ accepted
 `stale` 是计算属性，不进入状态枚举。
 
 `mark_claim_stale` 只记录一次 stale 检查结果，不改变 `ClaimStatus`。如果 evidence 失效或超过领域 stale 周期，Claim 会在 health/context/projection 中被视为 stale，但仍保持原状态。
+
+P0/P1 不开启候选 Claim 自动合并。P1 中 `auto_accept` 只作为审核建议；后续在 candidate/review 闭环稳定后，再基于领域策略开放高置信 Claim 自动合并。
 
 P0 CLI 生命周期命令：
 - `pks claim expire <project_id> <claim_id>`
@@ -79,9 +81,9 @@ P0 CLI 生命周期命令：
 - confidence `< 0.3`：reject。
 - 有冲突：manual review。
 - `inference`、`preference`、`constraint` 默认 manual review。
-- `factual` 达到领域阈值可 auto accept。
+- `factual` 达到领域阈值可获得 auto_accept 建议。
 
-P0 中自动接受只覆盖高置信 factual Claim。
+P1 不因 auto_accept 建议自动合并 candidate。自动合并是后续阶段用于降低人工审核负担的能力。
 
 ## 存储
 

@@ -48,6 +48,7 @@ P1 uses these product decisions:
 - Candidates use the same core Claim schema.
 - Candidates are stored separately under `capsules/<project_id>/candidates/`.
 - `auto_accept` is a recommendation in P1, not an automatic merge.
+- Policy-driven automatic merge remains a future goal after the review loop is stable.
 - Reject does not persist rejected candidate YAML. Rejection is recorded only in audit log.
 - Accepted Claims remain stored under `capsules/<project_id>/claims/`.
 - Context Pack and `PKS.md` continue to ignore candidates.
@@ -186,6 +187,7 @@ P1 采用以下产品口径：
 - Candidate 复用 Claim 核心 schema。
 - Candidate 独立存放在 `capsules/<project_id>/candidates/`。
 - P1 中 `auto_accept` 只是审核建议，不自动合并。
+- 策略驱动自动合并是后续明确目标，等审核闭环稳定后再开放。
 - Reject 不保留 rejected candidate YAML，只写 audit log。
 - Accepted Claim 继续存放在 `capsules/<project_id>/claims/`。
 - Context Pack 和 `PKS.md` 继续排除 candidates。
@@ -294,7 +296,7 @@ ReviewStrategy 输出应包含：
 - `constraint`、TasteAndStyle、架构类 Claim：manual review。
 - factual 且超过阈值：auto_accept recommendation。
 
-注意：P1 不因 auto_accept recommendation 自动合并。
+注意：P1 不因 auto_accept recommendation 自动合并。该 recommendation 的价值是先降低人工判断成本，并为后续策略驱动自动合并积累统计数据。
 
 ### 4.5 Review CLI
 
@@ -400,4 +402,4 @@ Full verification：
 - Web UI：P2 再做 Claim 审核工作台。
 - MCP Server：P3 再暴露 Agent 接口。
 - Policy Engine：P3 与 Task Contract 一起设计。
-- 自动合并 auto_accept：等人工 review 流程稳定后再开放。
+- 自动合并 auto_accept：P0/P1 不开放；后续基于领域策略、证据完整性、冲突检测和审计要求开放高置信 Claim 自动合并，以降低人类审核负担。
