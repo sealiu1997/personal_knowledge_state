@@ -2,6 +2,10 @@
 
 > English version first. 中文版在后。The Chinese version is the primary review surface for product and architecture decisions.
 
+> Calibration note, 2026-05-10: this is a historical P0 plan. The current core design treats Fact as `type=factual` Claim, treats all Markdown as Claim projections, and merges Content Pack with `PKS.md`. Use `docs/core-design/` and the P1 plan for current terminology.
+
+> 校准说明，2026-05-10：本文是历史 P0 计划。当前核心设计将 Fact 视为 `type=factual` Claim，将所有 Markdown 视为 Claim 投影，并把 Content Pack 与 `PKS.md` 合并为同一概念。当前术语以 `docs/core-design/` 和 P1 计划为准。
+
 ---
 
 # English Version

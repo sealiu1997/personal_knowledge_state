@@ -39,17 +39,17 @@ def test_cli_claim_lifecycle_and_snapshot_commands(tmp_path) -> None:
     )
     assert result.exit_code == 0
 
-    add_claim(home, "CLM-CLI-001", "stores_state_in", "YAML")
+    add_claim(home, "CLM-CLI-001", "stores_state_in", "YAML", accept=True)
     result = runner.invoke(app, ["claim", "expire", "pks", "CLM-CLI-001", "--home", str(home)])
     assert result.exit_code == 0
     assert "expired" in result.output
 
-    add_claim(home, "CLM-CLI-002", "has_projection", "PKS.md")
+    add_claim(home, "CLM-CLI-002", "has_projection", "PKS.md", accept=True)
     result = runner.invoke(app, ["claim", "dispute", "pks", "CLM-CLI-002", "--home", str(home)])
     assert result.exit_code == 0
     assert "disputed" in result.output
 
-    add_claim(home, "CLM-CLI-003", "uses_kernel", "facade")
+    add_claim(home, "CLM-CLI-003", "uses_kernel", "facade", accept=True)
     result = runner.invoke(
         app,
         [
@@ -84,6 +84,58 @@ def test_cli_claim_lifecycle_and_snapshot_commands(tmp_path) -> None:
     result = runner.invoke(app, ["snapshot", "list", "--home", str(home)])
     assert result.exit_code == 0
     assert "cli snapshot" in result.output
+
+
+def test_cli_review_policy_and_claim_filters(tmp_path) -> None:
+    home = tmp_path / "pks-home"
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            "pks",
+            "--name",
+            "PKS",
+            "--capsule-type",
+            "SoftwareCapsule",
+            "--domain",
+            "dev",
+            "--stage",
+            "P1",
+            "--home",
+            str(home),
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0
+
+    add_claim(home, "CLM-CLI-REVIEW", "uses_review", "candidate queue")
+
+    result = runner.invoke(app, ["review", "list", "pks", "--home", str(home)])
+    assert result.exit_code == 0
+    assert "CLM-CLI-REVIEW" in result.output
+
+    result = runner.invoke(app, ["review", "show", "pks", "CLM-CLI-REVIEW", "--home", str(home)])
+    assert result.exit_code == 0
+    assert "Recommendation: auto_accept" in result.output
+
+    result = runner.invoke(app, ["review", "accept", "pks", "CLM-CLI-REVIEW", "--home", str(home)])
+    assert result.exit_code == 0
+    assert "accepted" in result.output
+
+    result = runner.invoke(
+        app,
+        ["claim", "list", "pks", "--predicate", "uses_review", "--home", str(home)],
+    )
+    assert result.exit_code == 0
+    assert "CLM-CLI-REVIEW" in result.output
+
+    result = runner.invoke(app, ["policy", "show", "dev", "--home", str(home)])
+    assert result.exit_code == 0
+    assert "min_support" in result.output
+
+    result = runner.invoke(app, ["policy", "validate", "dev", "--home", str(home)])
+    assert result.exit_code == 0
+    assert "Policy valid." in result.output
 
 
 def test_cli_project_sync_reports_git_state(tmp_path) -> None:
@@ -127,7 +179,7 @@ def test_cli_project_sync_reports_git_state(tmp_path) -> None:
     assert "Git available: True" in result.output
 
 
-def add_claim(home, claim_id: str, predicate: str, object_: str) -> None:
+def add_claim(home, claim_id: str, predicate: str, object_: str, accept: bool = False) -> None:
     result = runner.invoke(
         app,
         [
@@ -148,11 +200,16 @@ def add_claim(home, claim_id: str, predicate: str, object_: str) -> None:
             "用户手动设定",
             "--confidence",
             "0.9",
+            "--tags",
+            "project",
             "--home",
             str(home),
         ],
     )
     assert result.exit_code == 0
+    if accept:
+        result = runner.invoke(app, ["review", "accept", "pks", claim_id, "--home", str(home)])
+        assert result.exit_code == 0
 
 
 def run_git(root, *args: str) -> None:

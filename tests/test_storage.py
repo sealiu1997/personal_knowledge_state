@@ -1,3 +1,4 @@
+from pks.kernel.storage import read_yaml
 from pks.models import CapsuleDomain, ProjectMetadata
 from pks.storage import CapsuleStore
 
@@ -28,6 +29,10 @@ def test_store_creates_minimal_capsule(tmp_path) -> None:
     capsule_path = store.create_capsule(project)
 
     assert (capsule_path / "project.yaml").is_file()
-    assert (capsule_path / "PKS_PROJECT.md").is_file()
     assert (capsule_path / "claims").is_dir()
-    assert (capsule_path / "journal.md").is_file()
+    assert (capsule_path / "candidates").is_dir()
+    assert (capsule_path / "projections").is_dir()
+    assert (capsule_path / "projection_specs").is_dir()
+    project_yaml = read_yaml(capsule_path / "project.yaml")
+    assert "stage" not in project_yaml
+    assert "current_goal" not in project_yaml

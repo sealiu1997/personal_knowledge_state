@@ -5,16 +5,18 @@ PKS is a local-first personal knowledge state control plane.
 PKS 是一个本地优先的个人知识状态控制平面。
 
 The authoritative product design is [`docs/core-design/pks_product_plan_v2.md`](docs/core-design/pks_product_plan_v2.md).
-Current P0 design notes live beside it:
+Current design notes live beside it:
 [`pks_kernel_design.md`](docs/core-design/pks_kernel_design.md),
-[`pks_claim_design.md`](docs/core-design/pks_claim_design.md), and
-[`pks_capsule_design.md`](docs/core-design/pks_capsule_design.md).
+[`pks_claim_design.md`](docs/core-design/pks_claim_design.md),
+[`pks_capsule_design.md`](docs/core-design/pks_capsule_design.md), and
+[`pks_projection_design.md`](docs/core-design/pks_projection_design.md).
 
 权威产品设计文档是 [`docs/core-design/pks_product_plan_v2.md`](docs/core-design/pks_product_plan_v2.md)。
-当前 P0 设计说明位于同目录：
+当前设计说明位于同目录：
 [`pks_kernel_design.md`](docs/core-design/pks_kernel_design.md)、
-[`pks_claim_design.md`](docs/core-design/pks_claim_design.md) 和
-[`pks_capsule_design.md`](docs/core-design/pks_capsule_design.md)。
+[`pks_claim_design.md`](docs/core-design/pks_claim_design.md)、
+[`pks_capsule_design.md`](docs/core-design/pks_capsule_design.md)、
+[`pks_projection_design.md`](docs/core-design/pks_projection_design.md)。
 
 Historical inputs are archived under [`docs/history/`](docs/history/), including the original product plan, the architecture/tooling increment, and Li Ziran's article that motivated the problem framing.
 
@@ -29,19 +31,19 @@ This repository has started the P0 implementation:
 - Python package skeleton under `src/pks/`
 - `src/pks/` 下的 Python 包骨架
 - Pydantic models for project metadata, tracking, domain policy, and evidence-backed Claims
-- 项目元信息、跟踪配置、领域策略与证据支撑 Claim 的 Pydantic 模型
+- 项目元信息、跟踪配置、领域策略与 evidence 支撑 Claim 的 Pydantic 模型
 - Independent PKS home resolution, defaulting to `~/.pks`
 - 独立 PKS home 路径解析，默认是 `~/.pks`
-- Kernel modules for Project Registry, Claim Engine, Review Strategy, Tracker, Context, Projection, Snapshot, and Audit Log
-- Kernel 模块：项目注册、Claim 引擎、审核策略、项目跟踪、上下文、投影、快照与审计日志
+- Kernel modules for Project Registry, Claim Engine, Review Strategy, Tracker, Context, Projection, Snapshot, and Audit Claims
+- Kernel 模块：项目注册、Claim 引擎、审核策略、项目跟踪、上下文、投影、快照与 Audit Claim
 - Kernel code is split by business boundary under `src/pks/kernel/`
 - Kernel 代码已按业务边界拆分在 `src/pks/kernel/`
 - YAML-backed Capsule and Claim storage with default domain `claim_policy.yaml`
 - 基于 YAML 的 Capsule 与 Claim 存储，并生成默认领域 `claim_policy.yaml`
-- Domain-level TasteAndStyle Claims are injected into Context Pack and `PKS.md`
-- 领域级 TasteAndStyle Claim 会注入 Context Pack 与 `PKS.md`
-- Dynamic Markdown Context Pack and generated `PKS.md` projection
-- 动态 Markdown Context Pack 与生成式 `PKS.md` 投影
+- Domain-level TasteAndStyle Claims are injected into Content Pack / `PKS.md`
+- 领域级 TasteAndStyle Claim 会注入 Content Pack / `PKS.md`
+- Dynamic Content Pack and generated `PKS.md` projection using the same rules
+- 动态 Content Pack 与生成式 `PKS.md` 使用同一套投影规则
 - Typer CLI entrypoint with `init-home`, `new`, `context`, `health`, `claim`, `project`, and `snapshot`
 - Typer CLI 入口，包含 `init-home`、`new`、`context`、`health`、`claim`、`project` 和 `snapshot`
 
@@ -74,7 +76,9 @@ CLI 冒烟测试：
 - PKS 状态存放在项目文件夹之外。
 - Project folders receive generated projections such as `PKS.md`.
 - 项目文件夹只接收 `PKS.md` 这类生成投影。
-- Context Packs are generated dynamically and are not persisted as `context.md`.
-- Context Pack 动态生成，不以 `context.md` 形式持久化。
+- `PKS.md` is the materialized Content Pack; `context.md` is not persisted.
+- `PKS.md` 是落地版 Content Pack；不持久化 `context.md`。
+- Markdown files are Claim projections; content and rule changes go through Kernel APIs.
+- Markdown 文件是 Claim 投影；内容和规则修改通过 Kernel 接口完成。
 - Agents submit candidate knowledge with evidence; they do not directly mutate accepted state.
 - Agent 提交带证据的候选知识，不能直接修改 accepted 状态。

@@ -9,8 +9,11 @@ from pks.models import Claim, EvidenceIssue, ProjectMetadata
 class ProjectTracker:
     def check_evidence(self, project: ProjectMetadata, claims: list[Claim]) -> list[EvidenceIssue]:
         issues: list[EvidenceIssue] = []
+        skipped_source_types = {"manual", "conversation", "kernel_event", "url", "command"}
         for claim in claims:
             for evidence in claim.evidence:
+                if evidence.source_type_value in skipped_source_types:
+                    continue
                 issue = self._check_one(project, claim, evidence.source_ref, evidence.excerpt)
                 if issue:
                     issues.append(issue)

@@ -13,6 +13,7 @@ from pks.models import (
     Evidence,
     ProjectMetadata,
     Relation,
+    SupportingClaim,
 )
 
 
@@ -40,6 +41,7 @@ def claim(
     confidence: float = 0.9,
     source_ref: str = "manual",
     excerpt: str = "用户手动设定",
+    tags: list[str] | None = None,
 ) -> Claim:
     return Claim(
         claim_id=claim_id,
@@ -48,9 +50,15 @@ def claim(
         object=object_,
         domain=CapsuleDomain.DEV,
         type=ClaimType.FACTUAL,
+        tags=tags or ["project"],
         confidence=confidence,
         evidence=[evidence(source_ref, excerpt)],
     )
+
+
+def submit_and_accept(kernel: Kernel, candidate: Claim) -> Claim:
+    kernel.submit_candidate("pks", candidate)
+    return kernel.accept_candidate("pks", candidate.claim_id)
 
 
 def test_kernel_creates_loads_and_lists_capsules(tmp_path) -> None:
@@ -58,48 +66,53 @@ def test_kernel_creates_loads_and_lists_capsules(tmp_path) -> None:
     capsule_path = kernel.create_capsule(project(tmp_path))
 
     loaded = kernel.load_capsule("pks")
-    updated = kernel.update_capsule("pks", stage="P0 closure", current_goal="Close P0")
+    updated = kernel.update_capsule("pks", repository_url="git@example.invalid:pks.git")
     resolved = kernel.resolve_capsule("pks")
     listed = kernel.list_capsules()
 
     assert loaded.name == "PKS"
-    assert updated.stage == "P0 closure"
+    assert updated.repository_url == "git@example.invalid:pks.git"
     assert resolved.capsule_path == capsule_path
-    assert resolved.project.current_goal == "Close P0"
     assert listed[0].project_id == "pks"
-    assert (capsule_path / "architecture.md").is_file()
+    assert (capsule_path / "candidates").is_dir()
+    assert (capsule_path / "projections" / "architecture.md").is_file()
     assert (kernel.home / "domains" / "dev" / "claim_policy.yaml").is_file()
+    project_yaml = (capsule_path / "project.yaml").read_text(encoding="utf-8")
+    assert "stage:" not in project_yaml
 
 
-def test_kernel_auto_accepts_high_confidence_factual_claim(tmp_path) -> None:
+def test_kernel_recommends_auto_accept_but_keeps_candidate_separate(tmp_path) -> None:
     kernel = Kernel(tmp_path / "pks-home")
     kernel.create_capsule(project(tmp_path))
 
-    decision = kernel.submit_claim("pks", claim("CLM-2026-0001"))
-    claims = kernel.list_claims("pks")
+    decision = kernel.submit_candidate("pks", claim("CLM-2026-0001"))
+    candidates = kernel.list_candidates("pks")
+    rendered_before_accept = kernel.render_context("pks")
+    accepted = kernel.accept_candidate("pks", "CLM-2026-0001")
     rendered = kernel.render_context("pks")
 
     assert decision.action == "auto_accept"
-    assert claims[0].status_value == ClaimStatus.ACCEPTED.value
+    assert candidates[0].claim_id == "CLM-2026-0001"
+    assert "independent PKS home" not in rendered_before_accept
+    assert accepted.status_value == ClaimStatus.ACCEPTED.value
+    assert kernel.list_candidates("pks") == []
     assert "independent PKS home" in rendered
 
 
 def test_conflicting_accepted_claims_become_disputed(tmp_path) -> None:
     kernel = Kernel(tmp_path / "pks-home")
     kernel.create_capsule(project(tmp_path))
-    kernel.submit_claim("pks", claim("CLM-2026-0001", object_="independent PKS home"))
+    submit_and_accept(kernel, claim("CLM-2026-0001", object_="independent PKS home"))
 
-    decision = kernel.submit_claim("pks", claim("CLM-2026-0002", object_="project folder"))
-    disputed = kernel.accept_claim("pks", "CLM-2026-0002")
+    decision = kernel.submit_candidate("pks", claim("CLM-2026-0002", object_="project folder"))
+    disputed = kernel.accept_candidate("pks", "CLM-2026-0002")
     statuses = {item.claim_id: item.status_value for item in kernel.list_claims("pks")}
 
     assert decision.action == "manual_review"
     assert decision.conflicts == ["CLM-2026-0001"]
     assert disputed.status_value == ClaimStatus.DISPUTED.value
-    assert statuses == {
-        "CLM-2026-0001": ClaimStatus.DISPUTED.value,
-        "CLM-2026-0002": ClaimStatus.DISPUTED.value,
-    }
+    assert statuses["CLM-2026-0001"] == ClaimStatus.DISPUTED.value
+    assert statuses["CLM-2026-0002"] == ClaimStatus.DISPUTED.value
 
 
 def test_health_marks_stale_claims_and_context_excludes_them(tmp_path) -> None:
@@ -115,7 +128,7 @@ def test_health_marks_stale_claims_and_context_excludes_them(tmp_path) -> None:
         excerpt="PKS state lives outside projects.",
     )
     stale_claim.last_verified = date(2025, 1, 1)
-    kernel.submit_claim("pks", stale_claim)
+    submit_and_accept(kernel, stale_claim)
 
     report = kernel.health_check("pks", today=date(2026, 5, 9))
     stale_result = kernel.mark_claim_stale("pks", "CLM-2026-0003")
@@ -135,7 +148,7 @@ def test_health_reports_evidence_integrity_issues(tmp_path) -> None:
     kernel = Kernel(tmp_path / "pks-home")
     kernel.create_capsule(project(tmp_path, project_root))
 
-    kernel.submit_claim("pks", claim("CLM-2026-0004", source_ref="design.md", excerpt="old text"))
+    submit_and_accept(kernel, claim("CLM-2026-0004", source_ref="design.md", excerpt="old text"))
 
     report = kernel.health_check("pks")
 
@@ -148,22 +161,20 @@ def test_projection_can_be_written_without_being_source_of_truth(tmp_path) -> No
     project_root.mkdir()
     kernel = Kernel(tmp_path / "pks-home")
     kernel.create_capsule(project(tmp_path, project_root))
-    kernel.submit_claim("pks", claim("CLM-2026-0005"))
+    submit_and_accept(kernel, claim("CLM-2026-0005"))
 
     projection_path = kernel.render_projection("pks", write=True)
 
     assert projection_path == project_root / "PKS.md"
-    assert "This file is generated from PKS Kernel state" in projection_path.read_text(
-        encoding="utf-8"
-    )
+    assert "Generated from Claims" in projection_path.read_text(encoding="utf-8")
 
 
 def test_claim_lifecycle_expire_dispute_and_supersede(tmp_path) -> None:
     kernel = Kernel(tmp_path / "pks-home")
     kernel.create_capsule(project(tmp_path))
-    kernel.submit_claim("pks", claim("CLM-2026-0006", object_="YAML"))
-    kernel.submit_claim(
-        "pks",
+    submit_and_accept(kernel, claim("CLM-2026-0006", object_="YAML"))
+    submit_and_accept(
+        kernel,
         claim("CLM-2026-0007", predicate="has_projection", object_="PKS.md"),
     )
     new_claim = claim(
@@ -203,6 +214,99 @@ def test_context_injects_domain_taste_and_style_claims(tmp_path) -> None:
 
     assert "TS-DEV-001" in rendered
     assert "函数式风格" in rendered
+
+
+def test_min_support_rejects_constraint_without_lower_claim_support(tmp_path) -> None:
+    kernel = Kernel(tmp_path / "pks-home")
+    kernel.create_capsule(project(tmp_path))
+    unsupported = claim("C-UNSUPPORTED", object_="Do not bypass review")
+    unsupported.type = ClaimType.CONSTRAINT.value
+
+    decision = kernel.submit_candidate("pks", unsupported)
+
+    assert decision.action == "reject"
+    assert not decision.min_support_status.passed
+    assert kernel.list_candidates("pks") == []
+
+
+def test_inference_can_be_supported_by_accepted_factual_claim(tmp_path) -> None:
+    kernel = Kernel(tmp_path / "pks-home")
+    kernel.create_capsule(project(tmp_path))
+    submit_and_accept(kernel, claim("F-SUPPORT", tags=["architecture"]))
+    inference = Claim(
+        claim_id="I-SUPPORTED",
+        subject="PKS review",
+        predicate="depends_on",
+        object="accepted facts",
+        type=ClaimType.INFERENCE,
+        domain=CapsuleDomain.DEV,
+        tags=["architecture"],
+        supporting_claims=[SupportingClaim(claim_id="F-SUPPORT")],
+        confidence=0.7,
+    )
+
+    decision = kernel.submit_candidate("pks", inference)
+
+    assert decision.action == "manual_review"
+    assert decision.min_support_status.passed
+    assert kernel.load_candidate("pks", "I-SUPPORTED").supporting_claims[0].claim_id == "F-SUPPORT"
+
+
+def test_reject_candidate_deletes_yaml_and_writes_audit_claim(tmp_path) -> None:
+    kernel = Kernel(tmp_path / "pks-home")
+    capsule_path = kernel.create_capsule(project(tmp_path))
+    kernel.submit_candidate("pks", claim("CLM-REJECT", object_="temporary idea"))
+
+    audit_claim = kernel.reject_candidate("pks", "CLM-REJECT")
+
+    assert not (capsule_path / "candidates" / "CLM-REJECT.yaml").exists()
+    assert audit_claim.type_value == ClaimType.INFERENCE.value
+    assert "audit" in audit_claim.tags
+    assert "temporary idea" not in audit_claim.model_dump_json()
+
+
+def test_projection_edit_apis_create_candidates_or_patch_directly(tmp_path) -> None:
+    kernel = Kernel(tmp_path / "pks-home")
+    kernel.create_capsule(project(tmp_path))
+    draft = claim("F-PROJ-1", object_="Projection edits go through Kernel", tags=[])
+
+    decision = kernel.submit_projection_claim("pks", "project-summary", draft)
+    accepted = kernel.accept_candidate("pks", "F-PROJ-1")
+    patched = kernel.patch_projection_claim(
+        "pks",
+        "project-summary",
+        "F-PROJ-1",
+        {"content": "Projection edits are Kernel-mediated."},
+    )
+    semantic_decision = kernel.patch_projection_claim(
+        "pks",
+        "project-summary",
+        "F-PROJ-1",
+        {"object": "semantic edits require review"},
+    )
+
+    assert decision.action == "auto_accept"
+    assert "project" in accepted.tags
+    assert isinstance(patched, Claim)
+    assert patched.content == "Projection edits are Kernel-mediated."
+    assert isinstance(semantic_decision, object)
+    assert len(kernel.list_candidates("pks")) == 1
+
+
+def test_policy_validation_and_projection_listing(tmp_path) -> None:
+    kernel = Kernel(tmp_path / "pks-home")
+    kernel.create_capsule(project(tmp_path))
+
+    specs = kernel.list_projections("pks")
+    issues = kernel.validate_policy("dev")
+
+    assert [spec.projection_id for spec in specs] == [
+        "project-summary",
+        "journal",
+        "dev-architecture",
+        "dev-tasks",
+    ]
+    assert issues == []
 
 
 def test_sync_project_reports_git_diff_for_watched_paths(tmp_path) -> None:

@@ -21,6 +21,15 @@ class Relation(StrEnum):
     SUPERSEDES = "supersedes"
 
 
+class EvidenceSourceType(StrEnum):
+    FILE = "file"
+    URL = "url"
+    MANUAL = "manual"
+    COMMAND = "command"
+    CONVERSATION = "conversation"
+    KERNEL_EVENT = "kernel_event"
+
+
 class ClaimType(StrEnum):
     FACTUAL = "factual"
     INFERENCE = "inference"
@@ -52,9 +61,13 @@ class Qualifier(BaseModel):
 
 
 class Evidence(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     source_ref: str
+    source_type: EvidenceSourceType | None = None
     relation: Relation
     excerpt: str
+    locator: str | None = None
 
     @field_validator("source_ref", "excerpt")
     @classmethod
@@ -63,6 +76,54 @@ class Evidence(BaseModel):
         if not value:
             raise ValueError("evidence source_ref and excerpt must not be empty")
         return value
+
+    @model_validator(mode="after")
+    def infer_source_type(self) -> Evidence:
+        if self.source_type is None:
+            source_ref = self.source_ref.strip()
+            if source_ref == "manual":
+                self.source_type = EvidenceSourceType.MANUAL.value
+            elif source_ref.startswith("kernel_event:"):
+                self.source_type = EvidenceSourceType.KERNEL_EVENT.value
+            elif "://" in source_ref:
+                self.source_type = EvidenceSourceType.URL.value
+            else:
+                self.source_type = EvidenceSourceType.FILE.value
+        return self
+
+    @property
+    def source_type_value(self) -> str:
+        if isinstance(self.source_type, StrEnum):
+            return self.source_type.value
+        return str(self.source_type)
+
+
+class SupportingClaim(BaseModel):
+    claim_id: str
+    relation: Relation = Relation.SUPPORTS
+    note: str | None = None
+
+    @field_validator("claim_id")
+    @classmethod
+    def require_claim_id(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("supporting claim_id must not be empty")
+        return value
+
+
+class MinSupportRule(BaseModel):
+    evidence: int = Field(default=0, ge=0)
+    supporting_claims: int = Field(default=0, ge=0)
+    evidence_or_claims_min: int = Field(default=0, ge=0)
+    allowed_support_types: list[str] = Field(default_factory=list)
+    requires_human_source: bool = False
+    requires_manual_review: bool = False
+
+
+class MinSupportStatus(BaseModel):
+    passed: bool
+    details: list[str] = Field(default_factory=list)
 
 
 class Claim(BaseModel):
@@ -73,7 +134,7 @@ class Claim(BaseModel):
     subject: str
     predicate: str
     object: str
-    qualifier: Qualifier | None = None
+    qualifier: str | None = None
 
     content: str = ""
 
@@ -81,13 +142,13 @@ class Claim(BaseModel):
     domain: CapsuleDomain
     tags: list[str] = Field(default_factory=list)
 
-    evidence: list[Evidence] = Field(min_length=1)
+    supporting_claims: list[SupportingClaim] = Field(default_factory=list)
+    evidence: list[Evidence] = Field(default_factory=list)
 
     status: ClaimStatus = ClaimStatus.CANDIDATE
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     created_by: str = "human"
-    valid_from: date | None = None
     valid_until: date | None = None
     last_verified: date | None = None
 
@@ -102,6 +163,37 @@ class Claim(BaseModel):
         if not value:
             raise ValueError("claim core fields must not be empty")
         return value
+
+    @field_validator("qualifier", mode="before")
+    @classmethod
+    def normalize_qualifier(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            parts = [str(item).strip() for item in value.values() if str(item).strip()]
+            return " · ".join(parts) or None
+        text = str(value).strip()
+        return text or None
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, value: list[str]) -> list[str]:
+        seen: set[str] = set()
+        tags: list[str] = []
+        for item in value:
+            tag = item.strip()
+            if tag and tag not in seen:
+                seen.add(tag)
+                tags.append(tag)
+        return tags
+
+    @model_validator(mode="after")
+    def ensure_support_and_content(self) -> Claim:
+        if not self.evidence and not self.supporting_claims:
+            raise ValueError("claim requires evidence or supporting_claims")
+        if not self.content.strip():
+            self.content = f"{self.subject} {self.predicate} {self.object}"
+        return self
 
     @property
     def conflict_key(self) -> tuple[str, str]:
@@ -160,6 +252,7 @@ class DomainPolicy(BaseModel):
 
     domain: CapsuleDomain
     lifecycle: dict[str, LifecycleRule] = Field(default_factory=dict)
+    min_support: dict[str, MinSupportRule] = Field(default_factory=dict)
     manual_review_types: list[str] = Field(default_factory=list)
 
     @classmethod
@@ -187,17 +280,83 @@ class DomainPolicy(BaseModel):
                 ClaimType.PREFERENCE.value,
                 ClaimType.CONSTRAINT.value,
             ],
+            min_support={
+                ClaimType.FACTUAL.value: MinSupportRule(
+                    evidence=1,
+                    supporting_claims=0,
+                    allowed_support_types=[],
+                ),
+                ClaimType.INFERENCE.value: MinSupportRule(
+                    evidence=0,
+                    supporting_claims=0,
+                    evidence_or_claims_min=1,
+                    allowed_support_types=[ClaimType.FACTUAL.value],
+                ),
+                ClaimType.PREFERENCE.value: MinSupportRule(
+                    evidence=1,
+                    supporting_claims=0,
+                    evidence_or_claims_min=1,
+                    allowed_support_types=[
+                        ClaimType.FACTUAL.value,
+                        ClaimType.INFERENCE.value,
+                    ],
+                    requires_human_source=True,
+                ),
+                ClaimType.CONSTRAINT.value: MinSupportRule(
+                    evidence=1,
+                    supporting_claims=1,
+                    evidence_or_claims_min=2,
+                    allowed_support_types=[
+                        ClaimType.FACTUAL.value,
+                        ClaimType.INFERENCE.value,
+                        ClaimType.PREFERENCE.value,
+                    ],
+                    requires_manual_review=True,
+                ),
+            },
         )
 
     def lifecycle_for(self, claim_type: ClaimType | str) -> LifecycleRule:
         claim_type_value = claim_type.value if isinstance(claim_type, StrEnum) else str(claim_type)
         return self.lifecycle.get(claim_type_value, LifecycleRule())
 
+    def min_support_for(self, claim_type: ClaimType | str) -> MinSupportRule:
+        claim_type_value = claim_type.value if isinstance(claim_type, StrEnum) else str(claim_type)
+        if claim_type_value in self.min_support:
+            return self.min_support[claim_type_value]
+        return DomainPolicy.default_for(self.domain).min_support[claim_type_value]
+
 
 class ReviewDecision(BaseModel):
     action: ReviewAction
     reason: str
     conflicts: list[str] = Field(default_factory=list)
+    evidence_issues: list[str] = Field(default_factory=list)
+    min_support_status: MinSupportStatus = Field(
+        default_factory=lambda: MinSupportStatus(passed=True)
+    )
+    policy_notes: list[str] = Field(default_factory=list)
+
+
+class ProjectionFilters(BaseModel):
+    domains: list[str] = Field(default_factory=list)
+    types: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    exclude_tags: list[str] = Field(default_factory=list)
+    predicates: list[str] = Field(default_factory=list)
+
+
+class ProjectionSpec(BaseModel):
+    projection_id: str
+    output_path: str
+    title: str
+    description: str | None = None
+    include_status: list[str] = Field(default_factory=lambda: [ClaimStatus.ACCEPTED.value])
+    exclude_stale: bool = True
+    filters: ProjectionFilters = Field(default_factory=ProjectionFilters)
+    order: list[str] = Field(default_factory=lambda: ["type", "created_at"])
+    group_by: str | None = None
+    template: str | None = None
 
 
 class ProjectMetadata(BaseModel):
@@ -207,7 +366,7 @@ class ProjectMetadata(BaseModel):
     name: str
     capsule_type: str
     domain: CapsuleDomain
-    stage: str
+    stage: str = ""
     current_goal: str = ""
     deliverable: str = ""
     constraints: list[str] = Field(default_factory=list)
@@ -215,7 +374,7 @@ class ProjectMetadata(BaseModel):
     repository_url: str | None = None
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)
 
-    @field_validator("project_id", "name", "capsule_type", "stage")
+    @field_validator("project_id", "name", "capsule_type")
     @classmethod
     def require_metadata_text(cls, value: str) -> str:
         value = value.strip()
@@ -260,6 +419,7 @@ class ClaimHealth(BaseModel):
     stale: bool = False
     expired: bool = False
     evidence_issues: list[EvidenceIssue] = Field(default_factory=list)
+    min_support_issues: list[str] = Field(default_factory=list)
 
 
 class HealthReport(BaseModel):
@@ -271,6 +431,7 @@ class HealthReport(BaseModel):
     expired: int = 0
     disputed: int = 0
     superseded: int = 0
+    min_support_violations: int = 0
     evidence_issues: list[EvidenceIssue] = Field(default_factory=list)
     claims: list[ClaimHealth] = Field(default_factory=list)
 
@@ -284,6 +445,7 @@ class HealthReport(BaseModel):
             "expired": self.expired,
             "disputed": self.disputed,
             "superseded": self.superseded,
+            "min_support_violations": self.min_support_violations,
             "evidence_issue_count": len(self.evidence_issues),
         }
 

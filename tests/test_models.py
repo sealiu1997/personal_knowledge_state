@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from pks.models import CapsuleDomain, Claim, ClaimStatus, Evidence, Relation
+from pks.models import CapsuleDomain, Claim, ClaimStatus, Evidence, Relation, SupportingClaim
 
 
 def evidence() -> Evidence:
@@ -24,6 +24,19 @@ def test_claim_requires_evidence() -> None:
             domain=CapsuleDomain.DEV,
             evidence=[],
         )
+
+
+def test_claim_can_use_supporting_claim_without_external_evidence() -> None:
+    claim = Claim(
+        claim_id="I-2026-0001",
+        subject="PKS",
+        predicate="implies",
+        object="review loop",
+        domain=CapsuleDomain.DEV,
+        supporting_claims=[SupportingClaim(claim_id="F-00001")],
+    )
+
+    assert claim.supporting_claims[0].claim_id == "F-00001"
 
 
 def test_claim_conflict_key_uses_subject_and_predicate() -> None:

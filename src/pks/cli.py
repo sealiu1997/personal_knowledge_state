@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
 
 from pks import __version__
 from pks.kernel import Kernel
@@ -12,8 +13,10 @@ from pks.models import (
     Claim,
     ClaimType,
     Evidence,
+    EvidenceSourceType,
     ProjectMetadata,
     Relation,
+    SupportingClaim,
     TrackingConfig,
 )
 
@@ -23,9 +26,13 @@ app = typer.Typer(
 )
 claim_app = typer.Typer(help="Manage evidence-backed Claims.")
 project_app = typer.Typer(help="Manage Capsules and projections.")
+review_app = typer.Typer(help="Review candidate Claims.")
+policy_app = typer.Typer(help="Inspect and validate domain policies.")
 snapshot_app = typer.Typer(help="Create and list explicit PKS home snapshots.")
 app.add_typer(claim_app, name="claim")
 app.add_typer(project_app, name="project")
+app.add_typer(review_app, name="review")
+app.add_typer(policy_app, name="policy")
 app.add_typer(snapshot_app, name="snapshot")
 
 
@@ -125,6 +132,7 @@ def health(
     typer.echo(f"Expired: {summary['expired']}")
     typer.echo(f"Disputed: {summary['disputed']}")
     typer.echo(f"Superseded: {summary['superseded']}")
+    typer.echo(f"Min support violations: {summary['min_support_violations']}")
     typer.echo(f"Evidence issues: {summary['evidence_issue_count']}")
 
 
@@ -137,6 +145,11 @@ def claim_add(
     object_: Annotated[str, typer.Option("--object", help="Claim object.")],
     source_ref: Annotated[str, typer.Option(help="Evidence source reference.")],
     excerpt: Annotated[str, typer.Option(help="Evidence excerpt.")],
+    source_type: Annotated[
+        EvidenceSourceType | None,
+        typer.Option("--source-type", help="Evidence source type."),
+    ] = None,
+    locator: Annotated[str | None, typer.Option(help="Evidence locator.")] = None,
     claim_type: Annotated[
         ClaimType,
         typer.Option("--type", help="Claim type."),
@@ -149,6 +162,10 @@ def claim_add(
     content: Annotated[str, typer.Option(help="Human-readable content.")] = "",
     created_by: Annotated[str, typer.Option(help="Creator id.")] = "human",
     tags: Annotated[str, typer.Option(help="Comma-separated tags.")] = "",
+    supporting_claims: Annotated[
+        str,
+        typer.Option("--supporting-claims", help="Comma-separated accepted support Claim ids."),
+    ] = "",
     home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
 ) -> None:
     project = Kernel(home).load_capsule(project_id)
@@ -161,17 +178,22 @@ def claim_add(
         type=claim_type,
         domain=project.domain,
         tags=_split_csv(tags),
+        supporting_claims=[
+            SupportingClaim(claim_id=claim_id) for claim_id in _split_csv(supporting_claims)
+        ],
         confidence=confidence,
         created_by=created_by,
         evidence=[
             Evidence(
                 source_ref=source_ref,
+                source_type=source_type,
                 relation=relation,
                 excerpt=excerpt,
+                locator=locator,
             )
         ],
     )
-    decision = Kernel(home).submit_claim(project_id, claim)
+    decision = Kernel(home).submit_candidate(project_id, claim)
     typer.echo(f"{claim_id}: {decision.action} ({decision.reason})")
 
 
@@ -247,14 +269,105 @@ def claim_supersede(
 @claim_app.command("list")
 def claim_list(
     project_id: Annotated[str, typer.Argument(help="Project id.")],
+    status: Annotated[str | None, typer.Option("--status", help="Filter by Claim status.")] = None,
+    claim_type: Annotated[str | None, typer.Option("--type", help="Filter by Claim type.")] = None,
+    domain: Annotated[str | None, typer.Option("--domain", help="Filter by domain.")] = None,
+    tag: Annotated[str | None, typer.Option("--tag", help="Filter by tag.")] = None,
+    subject: Annotated[str | None, typer.Option("--subject", help="Filter by subject.")] = None,
+    predicate: Annotated[
+        str | None,
+        typer.Option("--predicate", help="Filter by predicate."),
+    ] = None,
     home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
 ) -> None:
-    claims = Kernel(home).list_claims(project_id)
+    claims = Kernel(home).list_claims(
+        project_id,
+        status=status,
+        type=claim_type,
+        domain=domain,
+        tag=tag,
+        subject=subject,
+        predicate=predicate,
+    )
     if not claims:
         typer.echo("No claims.")
         return
     for claim in claims:
         typer.echo(f"{claim.claim_id}\t{claim.status_value}\t{claim.display_content()}")
+
+
+@review_app.command("list")
+def review_list(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    candidates = Kernel(home).list_candidates(project_id)
+    if not candidates:
+        typer.echo("No candidates.")
+        return
+    for candidate in candidates:
+        typer.echo(f"{candidate.claim_id}\t{candidate.type_value}\t{candidate.display_content()}")
+
+
+@review_app.command("show")
+def review_show(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    candidate_id: Annotated[str, typer.Argument(help="Candidate Claim id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    kernel = Kernel(home)
+    candidate = kernel.load_candidate(project_id, candidate_id)
+    decision = kernel.review_candidate(project_id, candidate_id)
+    typer.echo(f"Claim: {candidate.claim_id}")
+    typer.echo(f"Type: {candidate.type_value}")
+    typer.echo(f"Content: {candidate.display_content()}")
+    typer.echo(f"Recommendation: {decision.action} ({decision.reason})")
+    typer.echo(f"Min support: {decision.min_support_status.passed}")
+    for detail in decision.min_support_status.details:
+        typer.echo(f"- {detail}")
+
+
+@review_app.command("accept")
+def review_accept(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    candidate_id: Annotated[str, typer.Argument(help="Candidate Claim id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    claim = Kernel(home).accept_candidate(project_id, candidate_id)
+    typer.echo(f"{claim.claim_id}: {claim.status_value}")
+
+
+@review_app.command("reject")
+def review_reject(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    candidate_id: Annotated[str, typer.Argument(help="Candidate Claim id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    audit_claim = Kernel(home).reject_candidate(project_id, candidate_id)
+    typer.echo(f"{candidate_id}: rejected ({audit_claim.claim_id})")
+
+
+@policy_app.command("show")
+def policy_show(
+    domain: Annotated[str, typer.Argument(help="Domain id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    policy = Kernel(home).load_policy(domain)
+    typer.echo(yaml.safe_dump(policy.model_dump(mode="json"), allow_unicode=True, sort_keys=False))
+
+
+@policy_app.command("validate")
+def policy_validate(
+    domain: Annotated[str, typer.Argument(help="Domain id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    issues = Kernel(home).validate_policy(domain)
+    if not issues:
+        typer.echo("Policy valid.")
+        return
+    for issue in issues:
+        typer.echo(f"- {issue}")
+    raise typer.Exit(code=1)
 
 
 @project_app.command("list")
@@ -288,13 +401,17 @@ def project_sync(
 @project_app.command("projection")
 def project_projection(
     project_id: Annotated[str, typer.Argument(help="Project id.")],
+    projection_id: Annotated[
+        str | None,
+        typer.Option("--projection-id", help="Projection id to render."),
+    ] = None,
     write: Annotated[
         bool,
-        typer.Option("--write", help="Write PKS.md into project folder."),
+        typer.Option("--write", help="Write projection files."),
     ] = False,
     home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
 ) -> None:
-    result = Kernel(home).render_projection(project_id, write=write)
+    result = Kernel(home).render_projection(project_id, projection_id=projection_id, write=write)
     typer.echo(result)
 
 
