@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ claim.claim_id }} · Review{% endblock %}
+{% block content %}
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.name }} · candidate</p>
+    <h1>{{ claim.claim_id }}</h1>
+  </div>
+  <div class="actions">
+    <form method="post" action="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/accept">
+      <button class="button accent" type="submit">Accept</button>
+    </form>
+    <form method="post" action="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/reject">
+      <button class="button danger" type="submit">Reject</button>
+    </form>
+  </div>
+</section>
+
+<section class="panel detail">
+  <p class="eyebrow">{{ claim.type_value }} · confidence {{ claim.confidence }}</p>
+  <h2>{{ claim.display_content() }}</h2>
+  <dl class="detail-grid">
+    <div><dt>Subject</dt><dd>{{ claim.subject }}</dd></div>
+    <div><dt>Predicate</dt><dd>{{ claim.predicate }}</dd></div>
+    <div><dt>Object</dt><dd>{{ claim.object }}</dd></div>
+    <div><dt>Recommendation</dt><dd>{{ decision.action }} · {{ decision.reason }}</dd></div>
+  </dl>
+  <h3>Evidence</h3>
+  <ul class="evidence-list">
+    {% for evidence in claim.evidence %}
+    <li><code>{{ evidence.source_ref }}</code><p>{{ evidence.excerpt }}</p></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

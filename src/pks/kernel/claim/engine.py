@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from pks.kernel.audit.log import AuditLog
 from pks.kernel.claim.store import ClaimStore
 from pks.models import (
     Claim,
@@ -18,21 +17,12 @@ class ClaimEngine:
     def __init__(
         self,
         capsule_path: Path,
-        audit_log: AuditLog | None = None,
         store: ClaimStore | None = None,
         policy: DomainPolicy | None = None,
     ) -> None:
         self.capsule_path = capsule_path
-        self.audit_log = audit_log
         self.store = store or ClaimStore(capsule_path)
         self.policy = policy
-
-    def submit_claim(self, claim: Claim) -> Claim:
-        self.require_min_support(claim)
-        claim.status = ClaimStatus.CANDIDATE.value
-        self.save_claim(claim)
-        self._audit("claim.submitted", {"claim_id": claim.claim_id})
-        return claim
 
     def accept_claim(self, claim_id: str, today: date | None = None) -> Claim:
         claim = self.load_claim(claim_id)
@@ -44,31 +34,24 @@ class ClaimEngine:
             for conflict in conflicts:
                 conflict.status = ClaimStatus.DISPUTED.value
                 self.save_claim(conflict)
-            self._audit(
-                "claim.disputed",
-                {"claim_id": claim.claim_id, "conflicts": [item.claim_id for item in conflicts]},
-            )
             return claim
 
         claim.status = ClaimStatus.ACCEPTED.value
         if claim.last_verified is None:
             claim.last_verified = today or date.today()
         self.save_claim(claim)
-        self._audit("claim.accepted", {"claim_id": claim.claim_id})
         return claim
 
     def expire_claim(self, claim_id: str) -> Claim:
         claim = self.load_claim(claim_id)
         claim.status = ClaimStatus.EXPIRED.value
         self.save_claim(claim)
-        self._audit("claim.expired", {"claim_id": claim.claim_id})
         return claim
 
     def mark_claim_disputed(self, claim_id: str) -> Claim:
         claim = self.load_claim(claim_id)
         claim.status = ClaimStatus.DISPUTED.value
         self.save_claim(claim)
-        self._audit("claim.disputed", {"claim_id": claim.claim_id})
         return claim
 
     def supersede_claim(self, old_claim_id: str, new_claim: Claim) -> Claim:
@@ -86,10 +69,6 @@ class ClaimEngine:
 
         self.save_claim(old_claim)
         self.save_claim(new_claim)
-        self._audit(
-            "claim.superseded",
-            {"old_claim_id": old_claim.claim_id, "new_claim_id": new_claim.claim_id},
-        )
         return new_claim
 
     def detect_conflicts(self, claim: Claim) -> list[Claim]:
@@ -200,10 +179,6 @@ class ClaimEngine:
 
     def claim_path(self, claim_id: str) -> Path:
         return self.store.claim_path(claim_id)
-
-    def _audit(self, event: str, payload: dict[str, object]) -> None:
-        if self.audit_log:
-            self.audit_log.append(event, payload)
 
     def _is_scoped_complement(self, existing: Claim, incoming: Claim) -> bool:
         if existing.qualifier is None or incoming.qualifier is None:

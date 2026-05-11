@@ -24,28 +24,28 @@ Historical inputs are archived under [`docs/history/`](docs/history/), including
 
 ## Current Slice / 当前切片
 
-This repository has started the P0 implementation:
+This repository has completed the P1 claim/review implementation slice:
 
-当前仓库已经开始 P0 实施：
+当前仓库已经完成 P1 Claim 候选与审核实现切片：
 
 - Python package skeleton under `src/pks/`
 - `src/pks/` 下的 Python 包骨架
-- Pydantic models for project metadata, tracking, domain policy, and evidence-backed Claims
-- 项目元信息、跟踪配置、领域策略与 evidence 支撑 Claim 的 Pydantic 模型
+- Pydantic models for project metadata, tracking, domain policy, min_support, supporting Claims, ProjectionSpec, and evidence-backed Claims
+- 项目元信息、跟踪配置、领域策略、min_support、supporting Claims、ProjectionSpec 与 evidence 支撑 Claim 的 Pydantic 模型
 - Independent PKS home resolution, defaulting to `~/.pks`
 - 独立 PKS home 路径解析，默认是 `~/.pks`
-- Kernel modules for Project Registry, Claim Engine, Review Strategy, Tracker, Context, Projection, Snapshot, and Audit Claims
-- Kernel 模块：项目注册、Claim 引擎、审核策略、项目跟踪、上下文、投影、快照与 Audit Claim
+- Kernel modules for Project Registry, Claim Engine, Candidate Queue, Review Engine, Review Strategy, Tracker, Projection, Snapshot, and Audit Claims
+- Kernel 模块：项目注册、Claim 引擎、候选队列、审核引擎、审核策略、项目跟踪、投影、快照与 Audit Claim
 - Kernel code is split by business boundary under `src/pks/kernel/`
 - Kernel 代码已按业务边界拆分在 `src/pks/kernel/`
-- YAML-backed Capsule and Claim storage with default domain `claim_policy.yaml`
-- 基于 YAML 的 Capsule 与 Claim 存储，并生成默认领域 `claim_policy.yaml`
-- Domain-level TasteAndStyle Claims are injected into Content Pack / `PKS.md`
-- 领域级 TasteAndStyle Claim 会注入 Content Pack / `PKS.md`
-- Dynamic Content Pack and generated `PKS.md` projection using the same rules
-- 动态 Content Pack 与生成式 `PKS.md` 使用同一套投影规则
-- Typer CLI entrypoint with `init-home`, `new`, `context`, `health`, `claim`, `project`, and `snapshot`
-- Typer CLI 入口，包含 `init-home`、`new`、`context`、`health`、`claim`、`project` 和 `snapshot`
+- YAML-backed Capsule, accepted Claim, Candidate Claim, and custom ProjectionSpec storage with default domain `claim_policy.yaml`
+- 基于 YAML 的 Capsule、accepted Claim、Candidate Claim 和自定义 ProjectionSpec 存储，并生成默认领域 `claim_policy.yaml`
+- Domain-level and type-level TasteAndStyle Claims are injected into `PKS.md`
+- 领域级和类型级 TasteAndStyle Claim 会注入 `PKS.md`
+- Dynamic `PKS.md` and Capsule projection files are generated from ProjectionSpecs and accepted Claims
+- 动态 `PKS.md` 与 Capsule 投影文件由 ProjectionSpec 和 accepted Claims 生成
+- Typer CLI entrypoint with `init-home`, `new`, `context`, `health`, `claim`, `review`, `policy`, `project`, and `snapshot`
+- Typer CLI 入口，包含 `init-home`、`new`、`context`、`health`、`claim`、`review`、`policy`、`project` 和 `snapshot`
 
 ## Local Development / 本地开发
 
@@ -63,10 +63,14 @@ CLI 冒烟测试：
 ```bash
 .venv/bin/pks --version
 .venv/bin/pks init-home --home /private/tmp/pks-smoke-home
-.venv/bin/pks new pks --name PKS --capsule-type SoftwareCapsule --domain dev --stage P0 --home /private/tmp/pks-smoke-home --yes
+.venv/bin/pks new pks --name PKS --capsule-type SoftwareCapsule --domain dev --stage P1 --home /private/tmp/pks-smoke-home --yes
 .venv/bin/pks claim add pks --claim-id CLM-001 --subject PKS --predicate stores_state_in --object "independent PKS home" --source-ref manual --excerpt "用户手动设定" --confidence 0.9 --home /private/tmp/pks-smoke-home
+.venv/bin/pks review show pks CLM-001 --home /private/tmp/pks-smoke-home
+.venv/bin/pks review accept pks CLM-001 --home /private/tmp/pks-smoke-home
 .venv/bin/pks context pks --home /private/tmp/pks-smoke-home
 .venv/bin/pks health pks --home /private/tmp/pks-smoke-home
+.venv/bin/pks policy validate dev --home /private/tmp/pks-smoke-home
+.venv/bin/pks project projection-check pks --home /private/tmp/pks-smoke-home
 .venv/bin/pks snapshot create --message "smoke snapshot" --home /private/tmp/pks-smoke-home
 ```
 

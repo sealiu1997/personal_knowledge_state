@@ -116,7 +116,10 @@ ProjectionSpec 字段：
 | `group_by` | 分组展示字段 | 选配 | `"type"` |
 | `template` | 自定义渲染模板 | 选配 | `null` |
 
-P1 可以先用代码内置 ProjectionSpec。等自定义投影需求稳定后，再把 ProjectionSpec 落盘为 YAML 文件。
+P1 已支持两层 ProjectionSpec：
+
+- 默认 ProjectionSpec 由代码内置，并由 `capsule_type` 决定。
+- 自定义 ProjectionSpec 可落盘到 `capsules/<project_id>/projection_specs/<projection_id>.yaml`，同名自定义规则覆盖默认规则。
 
 ## 基础投影定义
 
@@ -287,7 +290,7 @@ order: [created_at]
 - 未通过 Kernel 接受的编辑不会改变长期状态。
 - ProjectionEngine 可随时覆盖旧文件。
 - 所有自定义 Markdown 必须先定义 ProjectionSpec。
-- 如果检测到 Projection 文件被直接修改（hash 不匹配），Kernel 应发出警告并可选择覆盖。
+- Kernel 写入投影时记录 hash；`check_projection_integrity` / `pks project projection-check` 可检测 Projection 文件是否被直接修改。
 
 ## 投影与理解层次
 

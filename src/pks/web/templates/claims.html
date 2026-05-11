@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Claims · {{ project.name }}{% endblock %}
+{% block content %}
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.name }}</p>
+    <h1>Claim Browser</h1>
+  </div>
+  <a class="button subtle" href="/projects/{{ project.project_id }}">Project</a>
+</section>
+
+<form class="filter-bar" method="get">
+  <input name="status" placeholder="status" value="{{ filters.status or '' }}">
+  <input name="type" placeholder="type" value="{{ filters.type or '' }}">
+  <input name="domain" placeholder="domain" value="{{ filters.domain or '' }}">
+  <input name="tag" placeholder="tag" value="{{ filters.tag or '' }}">
+  <button class="button" type="submit">Filter</button>
+</form>
+
+<section class="panel">
+  {% if claims %}
+  <ul class="claim-list">
+    {% for claim in claims %}
+    <li>
+      <a href="/projects/{{ project.project_id }}/claims/{{ claim.claim_id }}">{{ claim.claim_id }}</a>
+      <span class="pill">{{ claim.status_value }}</span>
+      <span class="pill tone">{{ claim.type_value }}</span>
+      <p>{{ claim.display_content() }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No claims match these filters.</p>
+  {% endif %}
+</section>
+{% endblock %}

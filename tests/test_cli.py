@@ -1,10 +1,13 @@
 import shutil
 import subprocess
+from datetime import date
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from pks.cli import app
+from pks.kernel import Kernel
 
 runner = CliRunner()
 
@@ -138,6 +141,40 @@ def test_cli_review_policy_and_claim_filters(tmp_path) -> None:
     assert "Policy valid." in result.output
 
 
+def test_cli_maintain_enforces_expiry(tmp_path) -> None:
+    home = tmp_path / "pks-home"
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            "pks",
+            "--name",
+            "PKS",
+            "--capsule-type",
+            "SoftwareCapsule",
+            "--domain",
+            "dev",
+            "--stage",
+            "P2",
+            "--home",
+            str(home),
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0
+    add_claim(home, "CLM-CLI-EXPIRY", "has_temporary_state", "yes", accept=True)
+    kernel = Kernel(home)
+    expired_claim = kernel.load_claim("pks", "CLM-CLI-EXPIRY")
+    expired_claim.valid_until = date(2026, 5, 1)
+    kernel.claims.claim_engine("pks").save_claim(expired_claim)
+
+    result = runner.invoke(app, ["maintain", "pks", "--expiry", "--home", str(home)])
+
+    assert result.exit_code == 0
+    assert "Expired enforced: 1" in result.output
+    assert kernel.load_claim("pks", "CLM-CLI-EXPIRY").status_value == "expired"
+
+
 def test_cli_project_sync_reports_git_state(tmp_path) -> None:
     if shutil.which("git") is None:
         pytest.skip("git is not available")
@@ -177,6 +214,88 @@ def test_cli_project_sync_reports_git_state(tmp_path) -> None:
     result = runner.invoke(app, ["project", "sync", "pks", "--home", str(home)])
     assert result.exit_code == 0
     assert "Git available: True" in result.output
+
+
+def test_cli_projection_spec_and_integrity_commands(tmp_path) -> None:
+    home = tmp_path / "pks-home"
+    spec_path = tmp_path / "custom-spec.yaml"
+    patch_path = tmp_path / "custom-spec-patch.yaml"
+    spec_path.write_text(
+        yaml.safe_dump(
+            {
+                "projection_id": "cli-custom",
+                "output_path": "projections/cli_custom.md",
+                "title": "CLI Custom",
+                "include_status": ["accepted"],
+                "exclude_stale": True,
+                "filters": {"tags": ["cli-custom"]},
+                "order": ["created_at"],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    patch_path.write_text(yaml.safe_dump({"title": "CLI Custom Edited"}), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            "pks",
+            "--name",
+            "PKS",
+            "--capsule-type",
+            "SoftwareCapsule",
+            "--domain",
+            "dev",
+            "--stage",
+            "P1",
+            "--home",
+            str(home),
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0
+
+    result = runner.invoke(
+        app,
+        ["project", "projection-spec-save", "pks", str(spec_path), "--home", str(home)],
+    )
+    assert result.exit_code == 0
+    assert "cli-custom" in result.output
+
+    result = runner.invoke(
+        app,
+        ["project", "projection-spec-show", "pks", "cli-custom", "--home", str(home)],
+    )
+    assert result.exit_code == 0
+    assert "CLI Custom" in result.output
+
+    result = runner.invoke(
+        app,
+        [
+            "project",
+            "projection-spec-update",
+            "pks",
+            "cli-custom",
+            str(patch_path),
+            "--home",
+            str(home),
+        ],
+    )
+    assert result.exit_code == 0
+    assert "CLI Custom Edited" in result.output
+
+    result = runner.invoke(app, ["project", "projection-check", "pks", "--home", str(home)])
+    assert result.exit_code == 0
+    assert "Projection files valid." in result.output
+
+    result = runner.invoke(
+        app,
+        ["project", "projection-spec-delete", "pks", "cli-custom", "--home", str(home)],
+    )
+    assert result.exit_code == 0
+    assert "deleted" in result.output
 
 
 def add_claim(home, claim_id: str, predicate: str, object_: str, accept: bool = False) -> None:

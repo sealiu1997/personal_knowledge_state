@@ -1,12 +1,12 @@
 # PKS Kernel 设计
 
-状态：P1 设计优化，2026-05-10。
+状态：P2 实施后校准，2026-05-11。
 
 ## 定位
 
-Kernel 是 PKS 的控制层入口。CLI、未来 MCP 和 Web UI 都只能调用 Kernel 用例方法，不直接读写长期状态文件。
+Kernel 是 PKS 的控制层入口。CLI、Web UI 和未来 MCP 都只能调用 Kernel 用例方法，不直接读写长期状态文件。
 
-Kernel 负责协调 Capsule、Claim、审核策略、项目跟踪、投影生成和审计 Claim。它不负责理解用户意图，也不接管项目文件夹。
+Kernel 负责协调 Capsule、Claim、审核策略、项目跟踪、投影生成、维护和审计。它不负责理解用户意图，也不接管项目文件夹。
 
 Kernel 的长期状态写入对象只有 Claim 和 Capsule 运行时元数据。Markdown 是投影输出；投影内容和规则的修改必须通过 Kernel 接口。
 
@@ -14,60 +14,131 @@ Kernel 的长期状态写入对象只有 Claim 和 Capsule 运行时元数据。
 
 ```text
 src/pks/kernel/
-├── facade.py              # Kernel 用例入口
-├── capsule/               # Capsule 注册、布局、领域目录、继承映射
-├── claim/                 # Claim 生命周期、YAML store、min_support 校验
-├── candidate/             # Candidate Queue（P1 新增）
-├── review/                # 领域策略驱动的审核判断 + ReviewEngine
-├── tracking/              # evidence 完整性与 Git diff 跟踪
-├── render/                # ProjectionEngine：Claim 集合投影
-├── snapshot/              # 显式 PKS home Git 快照
-├── audit/                 # Audit Claim 生成（P1 迁移为 Claim）
-└── storage/               # YAML 读写基础设施
+├── facade.py              # Kernel 用例入口（薄编排层）
+├── health.py              # HealthEngine：stale 计算、evidence 检查、健康报告
+├── capsule/               # Capsule 注册与子模块
+│   ├── registry.py        # Capsule CRUD（组合所有子模块）
+│   ├── policy.py          # PolicyManager：领域策略加载与校验
+│   ├── taste.py           # TasteManager：TasteAndStyle Claim 管理
+│   ├── projection_specs.py # ProjectionSpecManager：ProjectionSpec CRUD
+│   ├── seeder.py          # ProjectSeeder：创建 Capsule 时的初始 Claim 播种
+│   ├── id_generator.py    # ClaimIdGenerator：全局 Claim ID 生成
+│   └── layout.py          # capsule_type → 默认 ProjectionSpec 映射
+├── claim/
+│   ├── engine.py          # ClaimEngine：Claim 生命周期、min_support 校验、冲突检测
+│   ├── workflow.py        # ClaimWorkflow：Claim 业务流程（submit/review/accept/reject）
+│   └── store.py           # ClaimStore：YAML 持久化
+├── candidate/
+│   ├── queue.py           # CandidateQueue：候选提交/列出/删除
+│   └── store.py           # CandidateStore：候选 YAML 存储
+├── review/
+│   ├── engine.py          # ReviewEngine：accept/reject 流程
+│   └── strategy.py        # ReviewStrategy：可解释审核建议
+├── render/
+│   ├── projection.py      # ProjectionEngine：Claim 集合 → Markdown
+│   └── service.py         # ProjectionService：投影编排（render/integrity/spec CRUD/edit API）
+├── maintenance/
+│   └── engine.py          # MaintenanceEngine：stale 扫描、过期强制执行、evidence 重检查
+├── snapshot/
+│   └── manager.py         # SnapshotManager：显式 PKS home Git 快照
+├── tracking/
+│   └── tracker.py         # ProjectTracker：evidence 完整性、Git diff 同步
+├── audit/
+│   └── factory.py         # AuditClaimFactory：事件写成 inference Claim
+└── storage/
+    └── yaml.py            # YAML 读写基础设施
 ```
+
+## 架构原则
+
+### 组合优于继承
+
+`ProjectRegistry` 通过组合（composition）聚合子模块，每个子模块是独立类，构造函数显式声明依赖：
+
+```text
+ProjectRegistry
+├── PolicyManager(domains_dir)
+├── TasteManager(domains_dir)
+├── ProjectionSpecManager(capsules_dir)
+├── ClaimIdGenerator(home)
+└── ProjectSeeder(capsules_dir, id_generator)
+```
+
+每个子模块可独立实例化和测试。
+
+### Facade 编排模式
+
+Kernel facade 是薄编排层，不含业务逻辑。每个方法的模式：
+
+```text
+1. 委托给对应模块执行业务操作
+2. 刷新投影（如果状态发生了变更）
+3. 返回结果
+```
+
+投影刷新统一由 facade 的 `_refresh_projections` 触发，业务模块（ClaimWorkflow、MaintenanceEngine）不知道投影的存在。
+
+### 单向依赖
+
+```text
+CLI / Web UI
+      ↓
+Kernel facade
+      ↓
+┌─────────────────────────────────────────────────┐
+│ ClaimWorkflow ─── ClaimEngine ─── ClaimStore    │
+│ ProjectionService ─── ProjectionEngine          │
+│ MaintenanceEngine ─── HealthEngine              │
+│ HealthEngine ─── ProjectTracker                 │
+│ All ←── ProjectRegistry（子模块组合）            │
+└─────────────────────────────────────────────────┘
+```
+
+- CLI/Web UI 依赖 Kernel；Kernel 不依赖 CLI/Web UI。
+- ClaimWorkflow 不知道 ProjectionService 的存在。
+- MaintenanceEngine 不触发投影刷新（由 facade 在调用后统一刷新）。
+- HealthEngine 自己构造 ClaimEngine 读取数据，不依赖 ClaimWorkflow。
+- ProjectionService 通过 ClaimWorkflow 获取 Claims 列表。
 
 ## 对外用例
 
 `Kernel` 暴露稳定用例方法：
 
 **Capsule 管理：**
-- `create_capsule(project: ProjectMetadata)` — 创建 Capsule，生成初始 Claims 和投影
+- `create_capsule(project)` — 创建 Capsule，播种初始 Claims，生成投影
 - `load_capsule(project_id)` — 读取 project.yaml
 - `update_capsule(project_id, **updates)` — 更新运行时注册字段
 - `resolve_capsule(project_id)` — 返回 ProjectMetadata 与 Capsule 路径
 - `list_capsules()` — 列出所有 Capsule
-- `generate_pks_new_params(**kwargs)` — 校验 pks new 参数，不做语义推断
 
 **Claim 生命周期：**
-- `submit_claim(project_id, claim)` — 提交 Claim（P0 兼容路径）
-- `load_claim(project_id, claim_id)` — 读取单条 Claim
-- `accept_claim(project_id, claim_id)` — 接受 Claim
-- `expire_claim(project_id, claim_id)` — 过期 Claim
-- `supersede_claim(project_id, old_claim_id, new_claim)` — 替代 Claim
-- `mark_claim_stale(project_id, claim_id)` — 标记 stale 检查结果
-- `mark_claim_disputed(project_id, claim_id)` — 标记争议
-- `list_claims(project_id, **filters)` — 列出 Claims（P1 支持筛选）
-
-**Candidate 与 Review（P1 新增）：**
 - `submit_candidate(project_id, claim)` — 提交候选 Claim
 - `list_candidates(project_id)` — 列出候选
 - `load_candidate(project_id, candidate_id)` — 读取候选
-- `delete_candidate(project_id, candidate_id)` — 删除候选
 - `review_candidate(project_id, candidate_id)` — 获取审核建议
-- `accept_candidate(project_id, candidate_id)` — 接受候选
-- `reject_candidate(project_id, candidate_id)` — 拒绝候选
+- `accept_candidate(project_id, candidate_id)` — 接受候选 + 刷新投影
+- `reject_candidate(project_id, candidate_id)` — 拒绝候选 + 刷新投影
+- `accept_claim(project_id, claim_id)` — 接受 Claim + 刷新投影
+- `load_claim(project_id, claim_id)` — 读取单条 Claim
+- `expire_claim(project_id, claim_id)` — 过期 Claim + 刷新投影
+- `supersede_claim(project_id, old_claim_id, new_claim)` — 替代 Claim + 刷新投影
+- `mark_claim_stale(project_id, claim_id)` — 标记 stale 检查结果
+- `mark_claim_disputed(project_id, claim_id)` — 标记争议 + 刷新投影
+- `list_claims(project_id, **filters)` — 列出 Claims（支持筛选）
 
-**健康与跟踪：**
-- `check_evidence(project_id)` — 检查 evidence 完整性
+**健康与维护：**
 - `health_check(project_id)` — 健康检查
 - `sync_project(project_id)` — Git diff 同步
+- `maintenance.run(project_id, stale=, expiry=, evidence=)` — 运行维护任务 + 刷新投影
 
 **投影：**
 - `render_context(project_id)` — 返回动态 PKS.md 字符串
-- `render_projection(project_id, projection_id?)` — 生成投影文件
+- `render_projection(project_id, projection_id?, write?)` — 生成投影
+- `check_projection_integrity(project_id)` — 检测外部修改
 - `list_projections(project_id)` — 列出可用投影
 - `create_projection_spec(project_id, spec)` — 创建自定义投影规则
 - `update_projection_spec(project_id, projection_id, changes)` — 修改投影规则
+- `delete_projection_spec(project_id, projection_id)` — 删除自定义投影
 - `submit_projection_claim(project_id, projection_id, claim_draft)` — 通过投影提交新 Claim
 - `patch_projection_claim(project_id, projection_id, claim_id, changes)` — 通过投影修改 Claim
 
@@ -75,143 +146,90 @@ src/pks/kernel/
 - `create_snapshot(message)` — 创建 PKS home 快照
 - `list_snapshots()` — 列出快照
 
-## 调用关系
+**策略：**
+- `load_policy(domain)` — 加载领域策略
+- `validate_policy(domain)` — 校验领域策略
 
-```text
-CLI / MCP / Web UI
-        ↓
-Kernel facade
-        ↓
-ProjectRegistry ── project.yaml / domain policy / capsule_type → ProjectionSpec 映射
-ClaimEngine     ── ClaimStore + min_support 校验
-CandidateQueue  ── CandidateStore（P1）
-ReviewEngine    ── ReviewStrategy + ClaimEngine + AuditClaimFactory（P1）
-ReviewStrategy  ── claim_policy.yaml（含 min_support）
-ProjectTracker  ── project folder / Git / evidence source
-ProjectionEngine── ProjectMetadata + Claims + ProjectionSpec
-AuditClaimFactory── type=inference Audit Claims（P1）
-SnapshotManager ── PKS home Git repo
-```
-
-模块之间保持单向依赖：
-- CLI 依赖 Kernel；Kernel 不依赖 CLI。
-- Render 只接收数据模型和 ProjectionSpec，不读存储。
-- ClaimEngine 负责 min_support 校验；ReviewStrategy 负责基于领域策略给出审核建议。
-- ProjectTracker 不修改 Claim 状态，只返回 evidence issue 和 diff 结果。
-- SnapshotManager 只在显式调用时提交 PKS home；普通状态变更只写 Audit Claim。
-- Projection edit API 只能生成 Claim operation draft 或 ProjectionSpec 变更，不直接写长期状态。
+**TasteAndStyle：**
+- `save_taste_claim(claim, capsule_type?)` — 保存 TasteAndStyle Claim
 
 ## Claim 校验边界
 
-Kernel 负责两层校验：
+两层校验分工：
 
 **结构校验（ClaimEngine）：**
-- `min_support` 规则：evidence 数量、supporting_claims 数量、总支撑数。
-- 类型层级：`allowed_support_types` 检查。
-- 冲突检测：`(subject, predicate)` 冲突 key。
-- `supersedes` 一致性：必须指向相同 `(subject, predicate)` 的旧 Claim。
+- `min_support` 规则：evidence 数量、supporting_claims 数量、总支撑数
+- 类型层级：`allowed_support_types` 检查
+- 冲突检测：`(subject, predicate)` 冲突 key
+- `supersedes` 一致性
 
 **策略校验（ReviewStrategy）：**
-- 基于领域 `claim_policy.yaml` 给出审核建议。
-- confidence 阈值判断。
-- 人工审核类型判断。
-- 冲突处理建议。
-
-两层校验的分工：ClaimEngine 负责"这条 Claim 结构上是否合法"，ReviewStrategy 负责"这条 Claim 应该如何审核"。
+- confidence 阈值判断
+- 人工审核类型判断
+- 冲突处理建议
+- min_support 状态纳入决策
 
 ## 投影边界
 
-`PKS.md` 就是 Content Pack：
+`PKS.md` 是 Capsule 所有投影按继承顺序的聚合：
 
-- `render_context` 返回动态 PKS.md 字符串。
-- `render_projection` 把同一内容写入项目根 `PKS.md`。
-- 两者调用同一套 ProjectionEngine，使用同一套 ProjectionSpec。
+```text
+PKS.md = BaseCapsule 投影 + 领域投影 + 自定义投影 + TasteAndStyle
+```
 
-Capsule 内的 `PKS_PROJECT.md`、`journal.md` 和领域 Markdown 也必须由 ProjectionEngine 生成。人或 Agent 不直接编辑 Markdown 文件，而是通过 Kernel 的投影接口修改投影内容或规则。
+`render_context` 返回字符串，`render_projection(write=True)` 写入文件。两者调用同一套 ProjectionEngine。
 
 投影内容编辑流程：
-
-```text
-submit_projection_claim / patch_projection_claim
-  ↓ Kernel
-min_support 校验
-  ↓ 通过
-Candidate Claim / Claim patch
-  ↓ review（语素变更）或直接更新（非语素变更）
-accepted Claim changes
-  ↓ render_projection
-updated Markdown
-```
-
-投影规则编辑流程：
-
-```text
-create_projection_spec / update_projection_spec
-  ↓ Kernel
-ProjectionSpec validation
-  ↓
-saved ProjectionSpec
-  ↓ render_projection
-updated Markdown
-```
+- 语素变更（subject/predicate/object）→ 创建新 Candidate，走 review
+- 非语素变更（content/tags/qualifier）→ 直接更新 + Audit Claim
 
 ## Audit 边界
 
-审计记录是 `type=inference` 的 Claim，由 Kernel 自动生成：
+审计记录是 `type=inference` 的 Claim，由 AuditClaimFactory 自动生成：
 
 - review accept / reject
 - claim expire / dispute / supersede
-- projection edit accepted / rejected
+- projection edit / spec create / spec update / spec delete
+- capsule create / update
 - snapshot create
 - project sync
-
-Audit Claim 不保存 rejected candidate 正文，只保存操作事实和最小 evidence。P0 的 `audit.log` 是过渡实现，P1 后以 Audit Claim 为准。
-
-## CLI 适配
-
-P0 CLI 只调用 Kernel：
-- `pks project sync <project_id>`
-- `pks claim expire <project_id> <claim_id>`
-- `pks claim dispute <project_id> <claim_id>`
-- `pks claim supersede <project_id> <old_claim_id> ...`
-- `pks snapshot create --message "..."`
-- `pks snapshot list`
-
-P1 新增：
-- `pks review list/show/accept/reject <project_id> [candidate_id]`
-- `pks claim list --status/--type/--domain/--tag/--subject`
-- `pks policy show/validate <domain>`
+- maintenance expiry
 
 ## 健康检查
 
-`health_check` 统计：
+`HealthEngine.health_check` 统计：
 - accepted、candidate、disputed、expired、superseded
-- computed stale
-- evidence issue
-- min_support violation（P1 新增）
+- computed stale（基于 `last_verified` + 领域 `stale_after_days` + evidence 完整性）
+- min_support violations
+- evidence issues
 
-`stale` 不是 `ClaimStatus`，由领域 `claim_policy.yaml`、`last_verified` 和 evidence 完整性动态计算。
+`stale` 不是 `ClaimStatus`，是动态计算属性。
+
+## 维护引擎
+
+`MaintenanceEngine` 提供三个独立维护任务：
+
+| 任务 | 方法 | 写 Audit |
+|------|------|----------|
+| Stale 扫描 | `scan_stale` | 否（计算属性） |
+| 过期强制执行 | `enforce_expiry` | 是 |
+| Evidence 重检查 | `recheck_evidence` | 否（报告） |
+
+维护后由 facade 统一刷新投影。
 
 ## 当前边界
 
-已实现（P0）：
-- YAML-backed Capsule/Claim 存储。
-- 领域默认 `claim_policy.yaml`。
-- TasteAndStyle Claim 注入 PKS.md。
-- Git diff watched paths 同步接口。
-- append-only audit log（P0 过渡实现）。
-- 显式 SnapshotManager，必要时初始化 PKS home Git repo。
-
-P1 待补齐：
-- `min_support` 校验下沉到 ClaimEngine。
-- Candidate Queue 与 ReviewEngine。
-- 统一 ProjectionEngine，使所有 Markdown 都从 Claim 集合生成。
-- 投影内容/规则编辑接口。
-- Audit Claim 替代独立 audit log。
-- `project.yaml` 字段迁移为 Claims。
-- `capsule_type` → 默认 ProjectionSpec 映射。
+已实现：
+- 组合模式的 ProjectRegistry（PolicyManager、TasteManager、ProjectionSpecManager、ClaimIdGenerator、ProjectSeeder）
+- ClaimWorkflow 无 callback，facade 编排 render
+- HealthEngine 独立（只依赖 registry + tracker）
+- MaintenanceEngine 独立（只依赖 registry + tracker）
+- ProjectionService（render/integrity/spec CRUD/edit API）
+- Web UI（FastAPI + Jinja2 + htmx，纯 Kernel 适配层）
+- 全局 Claim ID 生成（`<type_code>-<sequence>`）
 
 暂缓：
-- SQLite 索引。
-- MCP、Web UI。
-- 权限策略。
+- SQLite 索引
+- MCP Server
+- 权限策略（Policy Engine）
+- Task Contract

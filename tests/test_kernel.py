@@ -11,6 +11,8 @@ from pks.models import (
     ClaimStatus,
     ClaimType,
     Evidence,
+    ProjectionFilters,
+    ProjectionSpec,
     ProjectMetadata,
     Relation,
     SupportingClaim,
@@ -156,6 +158,43 @@ def test_health_reports_evidence_integrity_issues(tmp_path) -> None:
     assert report.evidence_issues[0].reason == "excerpt not found in source"
 
 
+def test_maintenance_enforces_expiry_idempotently_and_refreshes(tmp_path) -> None:
+    kernel = Kernel(tmp_path / "pks-home")
+    kernel.create_capsule(project(tmp_path))
+    expired_claim = claim("CLM-EXPIRY", object_="temporary state")
+    expired_claim.valid_until = date(2026, 5, 1)
+    submit_and_accept(kernel, expired_claim)
+
+    report = kernel.maintenance.run_all("pks", today=date(2026, 5, 9))
+    second_report = kernel.maintenance.run_all("pks", today=date(2026, 5, 9))
+    stored_claim = kernel.load_claim("pks", "CLM-EXPIRY")
+    audit_predicates = [
+        audit_claim.predicate for audit_claim in kernel.list_claims("pks", tag="audit")
+    ]
+
+    assert report.expired_enforced == 1
+    assert report.projections_refreshed
+    assert second_report.expired_enforced == 0
+    assert stored_claim.status_value == ClaimStatus.EXPIRED.value
+    assert audit_predicates.count("was_expired_by") == 1
+
+
+def test_maintenance_reports_stale_and_evidence_issues(tmp_path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "design.md").write_text("Current architecture.", encoding="utf-8")
+    kernel = Kernel(tmp_path / "pks-home")
+    kernel.create_capsule(project(tmp_path, project_root))
+    stale_claim = claim("CLM-STALE", source_ref="design.md", excerpt="old text")
+    stale_claim.last_verified = date(2025, 1, 1)
+    submit_and_accept(kernel, stale_claim)
+
+    report = kernel.maintenance.run("pks", today=date(2026, 5, 9), expiry=False)
+
+    assert report.stale_found == 1
+    assert report.evidence_issues_found == 1
+
+
 def test_projection_can_be_written_without_being_source_of_truth(tmp_path) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -194,6 +233,12 @@ def test_claim_lifecycle_expire_dispute_and_supersede(tmp_path) -> None:
     assert superseding.supersedes == "CLM-2026-0007"
     assert old_claim.status_value == ClaimStatus.SUPERSEDED.value
     assert old_claim.superseded_by == "CLM-2026-0008"
+    audit_predicates = {
+        audit_claim.predicate for audit_claim in kernel.list_claims("pks", tag="audit")
+    }
+    assert "was_expired_by" in audit_predicates
+    assert "was_disputed_by" in audit_predicates
+    assert "was_superseded_by" in audit_predicates
 
 
 def test_context_injects_domain_taste_and_style_claims(tmp_path) -> None:
@@ -214,6 +259,28 @@ def test_context_injects_domain_taste_and_style_claims(tmp_path) -> None:
 
     assert "TS-DEV-001" in rendered
     assert "函数式风格" in rendered
+
+
+def test_type_level_taste_and_style_overrides_domain_level(tmp_path) -> None:
+    kernel = Kernel(tmp_path / "pks-home")
+    kernel.create_capsule(project(tmp_path))
+    domain_claim = claim("TS-DEV-001", subject="代码风格", predicate="prefers", object_="领域偏好")
+    domain_claim.type = ClaimType.PREFERENCE.value
+    domain_claim.status = ClaimStatus.ACCEPTED.value
+    domain_claim.project = "domain:dev"
+    type_claim = claim("TS-SOFT-001", subject="代码风格", predicate="prefers", object_="类型偏好")
+    type_claim.type = ClaimType.PREFERENCE.value
+    type_claim.status = ClaimStatus.ACCEPTED.value
+    type_claim.project = "domain:dev:type:software"
+
+    kernel.save_taste_claim(domain_claim)
+    kernel.save_taste_claim(type_claim, capsule_type="SoftwareCapsule")
+
+    rendered = kernel.render_context("pks")
+
+    assert "TS-SOFT-001" in rendered
+    assert "类型偏好" in rendered
+    assert "领域偏好" not in rendered
 
 
 def test_min_support_rejects_constraint_without_lower_claim_support(tmp_path) -> None:
@@ -307,6 +374,76 @@ def test_policy_validation_and_projection_listing(tmp_path) -> None:
         "dev-tasks",
     ]
     assert issues == []
+
+
+def test_custom_projection_specs_are_persisted_and_editable(tmp_path) -> None:
+    kernel = Kernel(tmp_path / "pks-home")
+    capsule_path = kernel.create_capsule(project(tmp_path))
+    custom_spec = ProjectionSpec(
+        projection_id="custom-notes",
+        output_path="projections/custom_notes.md",
+        title="Custom Notes",
+        filters=ProjectionFilters(tags=["custom"]),
+    )
+
+    saved = kernel.create_projection_spec("pks", custom_spec)
+    submit_and_accept(
+        kernel,
+        claim("F-CUSTOM-1", object_="Custom projection claim", tags=["custom"]),
+    )
+    rendered = kernel.render_projection("pks", projection_id="custom-notes", write=True)
+    rendered_text = rendered.read_text(encoding="utf-8")
+    updated = kernel.update_projection_spec("pks", "custom-notes", {"title": "Edited Notes"})
+    kernel.delete_projection_spec("pks", "custom-notes")
+
+    assert saved.projection_id == "custom-notes"
+    assert (capsule_path / "projection_specs" / "custom-notes.yaml").exists() is False
+    assert "Custom projection claim" in rendered_text
+    assert updated.title == "Edited Notes"
+    assert "custom-notes" not in [spec.projection_id for spec in kernel.list_projections("pks")]
+
+
+def test_projection_integrity_detects_direct_markdown_edits(tmp_path) -> None:
+    kernel = Kernel(tmp_path / "pks-home")
+    capsule_path = kernel.create_capsule(project(tmp_path))
+
+    assert kernel.check_projection_integrity("pks") == []
+    projection_path = capsule_path / "projections" / "PKS_PROJECT.md"
+    projection_path.write_text("manual edit", encoding="utf-8")
+    issues = kernel.check_projection_integrity("pks")
+
+    assert issues[0].projection_id == "project-summary"
+    assert issues[0].reason == "projection modified outside Kernel"
+
+
+def test_legacy_p0_capsule_migrates_runtime_fields_to_claims(tmp_path) -> None:
+    home = tmp_path / "pks-home"
+    capsule_path = home / "capsules" / "legacy"
+    capsule_path.mkdir(parents=True)
+    (capsule_path / "project.yaml").write_text(
+        "\n".join(
+            [
+                "project_id: legacy",
+                "name: Legacy",
+                "capsule_type: SoftwareCapsule",
+                "domain: dev",
+                "stage: P0",
+                "current_goal: Migrate me",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    kernel = Kernel(home)
+    loaded = kernel.load_capsule("legacy")
+    claims = kernel.list_claims("legacy", predicate="current_stage")
+    project_yaml = (capsule_path / "project.yaml").read_text(encoding="utf-8")
+
+    assert loaded.project_id == "legacy"
+    assert (capsule_path / "candidates").is_dir()
+    assert (capsule_path / "projections").is_dir()
+    assert claims[0].object == "P0"
+    assert "stage:" not in project_yaml
 
 
 def test_sync_project_reports_git_diff_for_watched_paths(tmp_path) -> None:

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}PKS Dashboard{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Knowledge state</p>
+    <h1>Project Dashboard</h1>
+  </div>
+</section>
+
+{% if projects %}
+<section class="project-grid">
+  {% for item in projects %}
+  {% set project = item.project %}
+  {% set health = item.health %}
+  <article class="card project-card">
+    <div>
+      <p class="eyebrow">{{ project.domain_value }} · {{ project.capsule_type }}</p>
+      <h2><a href="/projects/{{ project.project_id }}">{{ project.name }}</a></h2>
+      <p class="muted">{{ project.project_id }}</p>
+    </div>
+    <dl class="stat-grid">
+      <div><dt>Accepted</dt><dd>{{ health.accepted }}</dd></div>
+      <div><dt>Candidates</dt><dd>{{ health.candidate }}</dd></div>
+      <div><dt>Stale</dt><dd>{{ health.stale }}</dd></div>
+      <div><dt>Evidence</dt><dd>{{ health.evidence_issues|length }}</dd></div>
+    </dl>
+    <div class="actions">
+      <a class="button" href="/projects/{{ project.project_id }}/review">Review</a>
+      <a class="button subtle" href="/projects/{{ project.project_id }}/claims">Claims</a>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% else %}
+<section class="empty-state">
+  <h2>No capsules yet</h2>
+  <p>Create one with <code>pks new</code>, then refresh this page.</p>
+</section>
+{% endif %}
+{% endblock %}

@@ -947,6 +947,7 @@ P0 当前实现同步文档：
 - [PKS Claim 设计](./pks_claim_design.md)
 - [PKS Capsule 设计](./pks_capsule_design.md)
 - [PKS Projection 设计](./pks_projection_design.md)
+- [PKS Maintenance 设计](./pks_maintenance_design.md)
 
 - [吹了几年的 AI 个人知识库，为什么还是那么难用？Karpathy 的 Wiki 并不是解决方案…【技术文章】](../history/吹了几年的%20AI%20个人知识库，为什么还是那么难用？Karpathy%20的%20Wiki%20并不是解决方案…【技术文章】.md)：李自然文章，提供“长期知识状态无法稳定运行”的问题背景。
 - [个人知识状态库：产品规划文档](../history/personal_knowledge_state_product_plan.md)：早期产品规划，保留项目定位、核心判断和 MVP 原始范围。

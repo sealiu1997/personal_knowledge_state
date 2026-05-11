@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} · PKS{% endblock %}
+{% block content %}
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.domain_value }} · {{ project.capsule_type }}</p>
+    <h1>{{ project.name }}</h1>
+    <p class="muted">{{ project.project_id }}</p>
+  </div>
+  <div class="actions">
+    <a class="button" href="/projects/{{ project.project_id }}/review">Review {{ candidate_count }}</a>
+    <a class="button subtle" href="/projects/{{ project.project_id }}/claims">Browse Claims</a>
+    <form method="post" action="/projects/{{ project.project_id }}/maintain" hx-post="/projects/{{ project.project_id }}/maintain">
+      <button class="button accent" type="submit">Maintain</button>
+    </form>
+  </div>
+</section>
+
+<section class="metric-row">
+  <div><span>Accepted</span><strong>{{ health.accepted }}</strong></div>
+  <div><span>Stale</span><strong>{{ health.stale }}</strong></div>
+  <div><span>Expired</span><strong>{{ health.expired }}</strong></div>
+  <div><span>Disputed</span><strong>{{ health.disputed }}</strong></div>
+  <div><span>Evidence</span><strong>{{ health.evidence_issues|length }}</strong></div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Recent Activity</h2>
+  </div>
+  {% if recent_claims %}
+  <ul class="claim-list">
+    {% for claim in recent_claims %}
+    <li>
+      <a href="/projects/{{ project.project_id }}/claims/{{ claim.claim_id }}">{{ claim.claim_id }}</a>
+      <span class="pill">{{ claim.status_value }}</span>
+      <p>{{ claim.display_content() }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No claims yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

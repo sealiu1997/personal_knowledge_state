@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ claim.claim_id }} · Claim{% endblock %}
+{% block content %}
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.name }} · {{ claim.status_value }}</p>
+    <h1>{{ claim.claim_id }}</h1>
+  </div>
+  <a class="button subtle" href="/projects/{{ project.project_id }}/claims">Claims</a>
+</section>
+
+<section class="panel detail">
+  <p class="eyebrow">{{ claim.type_value }} · {{ claim.domain_value }}</p>
+  <h2>{{ claim.display_content() }}</h2>
+  <dl class="detail-grid">
+    <div><dt>Subject</dt><dd>{{ claim.subject }}</dd></div>
+    <div><dt>Predicate</dt><dd>{{ claim.predicate }}</dd></div>
+    <div><dt>Object</dt><dd>{{ claim.object }}</dd></div>
+    <div><dt>Created by</dt><dd>{{ claim.created_by }}</dd></div>
+    <div><dt>Last verified</dt><dd>{{ claim.last_verified or "not set" }}</dd></div>
+    <div><dt>Valid until</dt><dd>{{ claim.valid_until or "open" }}</dd></div>
+  </dl>
+  <h3>Evidence</h3>
+  <ul class="evidence-list">
+    {% for evidence in claim.evidence %}
+    <li><code>{{ evidence.source_ref }}</code><p>{{ evidence.excerpt }}</p></li>
+    {% endfor %}
+  </ul>
+  {% if claim.supporting_claims %}
+  <h3>Supporting Claims</h3>
+  <ul class="evidence-list">
+    {% for support in claim.supporting_claims %}
+    <li><code>{{ support.claim_id }}</code><p>{{ support.note or support.relation }}</p></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}

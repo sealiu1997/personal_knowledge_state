@@ -1,6 +1,6 @@
 # PKS Capsule 设计
 
-状态：P1 设计优化，2026-05-10。
+状态：P2 实施后校准，2026-05-11。
 
 ## 定位
 
@@ -194,16 +194,36 @@ TasteAndStyle 按 Capsule 继承层级组织，每一层派生都可以有自己
 
 `pks new` 生成的 Markdown 是阅读投影，不是编辑入口。
 
+## 内部模块结构
+
+`ProjectRegistry` 通过组合聚合子模块，每个子模块是独立类：
+
+```text
+ProjectRegistry
+├── PolicyManager(domains_dir)        # 领域策略加载与校验
+├── TasteManager(domains_dir)         # TasteAndStyle Claim 管理
+├── ProjectionSpecManager(capsules_dir) # ProjectionSpec CRUD 与默认映射
+├── ClaimIdGenerator(home)            # 全局 Claim ID 生成
+└── ProjectSeeder(capsules_dir, id_gen) # 创建 Capsule 时的初始 Claim 播种
+```
+
+每个子模块：
+- 构造函数显式声明依赖（Path 参数）
+- 可独立实例化和测试
+- 不依赖 ProjectRegistry 的其他属性
+
+`ProjectRegistry` 本身只负责 Capsule CRUD（create/load/update/list/resolve）和转发子模块方法。
+
 ## 读取与更新
 
-P0 Kernel 支持：
-- `load_capsule`：读取 `project.yaml`。
-- `update_capsule`：显式更新 `project.yaml` 运行时注册字段。
+Kernel 支持：
+- `load_capsule`：读取 `project.yaml`（自动迁移旧格式）。
+- `update_capsule`：显式更新 `project.yaml` 运行时注册字段（禁止写入 stage/goal/deliverable/constraints）。
 - `resolve_capsule`：返回 `ProjectMetadata` 与 Capsule 路径。
 - `list_capsules`：列出 PKS home 下所有 Capsule。
 
-P1 需要补齐：
-- `stage`、`current_goal`、`deliverable`、`constraints` 迁移为 Claim。
+已完成：
+- `stage`、`current_goal`、`deliverable`、`constraints` 已迁移为 Claim。
 - 元信息更新只修改运行时注册字段。
 - 投影内容修改通过 Kernel 接口生成 Candidate Claim 或 Claim patch。
 - 投影规则修改通过 Kernel 接口更新 ProjectionSpec。

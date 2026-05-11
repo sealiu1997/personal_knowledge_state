@@ -561,6 +561,8 @@ CLI tests：
 - `pks claim list --status/--type/--domain/--tag/--subject/--predicate`
 - `pks policy show`
 - `pks policy validate`
+- `pks project projection-check`
+- `pks project projection-spec-list/show/save/update/delete`
 
 Full verification：
 
@@ -576,4 +578,4 @@ Full verification：
 - MCP Server：P3 再暴露 Agent 接口。
 - Policy Engine：P3 与 Task Contract 一起设计。
 - 自动合并 auto_accept：P0/P1 不开放；后续基于领域策略、证据完整性、冲突检测和审计要求开放高置信 Claim 自动合并。
-- ProjectionSpec 落盘为 YAML 文件：P1 先用代码内置，等自定义投影需求稳定后再落盘。
+- ProjectionSpec 已支持默认内置规则 + 自定义 YAML 落盘；更复杂模板系统仍暂缓。

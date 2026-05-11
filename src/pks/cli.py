@@ -14,6 +14,7 @@ from pks.models import (
     ClaimType,
     Evidence,
     EvidenceSourceType,
+    ProjectionSpec,
     ProjectMetadata,
     Relation,
     SupportingClaim,
@@ -136,6 +137,55 @@ def health(
     typer.echo(f"Evidence issues: {summary['evidence_issue_count']}")
 
 
+@app.command("maintain")
+def maintain(
+    project_id: Annotated[str | None, typer.Argument(help="Project id to maintain.")] = None,
+    stale: Annotated[bool, typer.Option("--stale", help="Only run stale scan.")] = False,
+    expiry: Annotated[bool, typer.Option("--expiry", help="Only enforce expiry.")] = False,
+    evidence: Annotated[
+        bool,
+        typer.Option("--evidence", help="Only re-check evidence integrity."),
+    ] = False,
+    all_projects: Annotated[
+        bool,
+        typer.Option("--all", help="Run maintenance for all projects."),
+    ] = False,
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    kernel = Kernel(home)
+    if not all_projects and project_id is None:
+        raise typer.BadParameter("provide a project_id or use --all")
+    run_all_tasks = not (stale or expiry or evidence)
+    selected = {
+        "stale": stale or run_all_tasks,
+        "expiry": expiry or run_all_tasks,
+        "evidence": evidence or run_all_tasks,
+    }
+    project_ids = (
+        [project.project_id for project in kernel.list_capsules()]
+        if all_projects
+        else [project_id]
+    )
+    for target_project_id in project_ids:
+        if target_project_id is None:
+            continue
+        report = kernel.maintenance.run(target_project_id, **selected)
+        _echo_maintenance_report(report)
+
+
+@app.command("serve")
+def serve(
+    host: Annotated[str, typer.Option("--host", help="Host interface to bind.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="Port to bind.")] = 8420,
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    import uvicorn
+
+    from pks.web import create_app
+
+    uvicorn.run(create_app(home), host=host, port=port)
+
+
 @claim_app.command("add")
 def claim_add(
     project_id: Annotated[str, typer.Argument(help="Project id.")],
@@ -158,7 +208,7 @@ def claim_add(
         Relation,
         typer.Option(help="Evidence relation."),
     ] = Relation.SUPPORTS,
-    confidence: Annotated[float, typer.Option(help="Confidence from 0.0 to 1.0.")] = 0.0,
+    confidence: Annotated[float, typer.Option(help="Confidence from 0.0 to 1.0.")] = 1.0,
     content: Annotated[str, typer.Option(help="Human-readable content.")] = "",
     created_by: Annotated[str, typer.Option(help="Creator id.")] = "human",
     tags: Annotated[str, typer.Option(help="Comma-separated tags.")] = "",
@@ -235,7 +285,7 @@ def claim_supersede(
     object_: Annotated[str, typer.Option("--object", help="New Claim object.")],
     source_ref: Annotated[str, typer.Option(help="Evidence source reference.")],
     excerpt: Annotated[str, typer.Option(help="Evidence excerpt.")],
-    confidence: Annotated[float, typer.Option(help="Confidence from 0.0 to 1.0.")] = 0.0,
+    confidence: Annotated[float, typer.Option(help="Confidence from 0.0 to 1.0.")] = 1.0,
     content: Annotated[str, typer.Option(help="Human-readable content.")] = "",
     created_by: Annotated[str, typer.Option(help="Creator id.")] = "human",
     tags: Annotated[str, typer.Option(help="Comma-separated tags.")] = "",
@@ -415,6 +465,73 @@ def project_projection(
     typer.echo(result)
 
 
+@project_app.command("projection-check")
+def project_projection_check(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    issues = Kernel(home).check_projection_integrity(project_id)
+    if not issues:
+        typer.echo("Projection files valid.")
+        return
+    for issue in issues:
+        typer.echo(f"{issue.projection_id}\t{issue.output_path}\t{issue.reason}")
+    raise typer.Exit(code=1)
+
+
+@project_app.command("projection-spec-list")
+def project_projection_spec_list(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    for spec in Kernel(home).list_projections(project_id):
+        typer.echo(f"{spec.projection_id}\t{spec.output_path}\t{spec.title}")
+
+
+@project_app.command("projection-spec-show")
+def project_projection_spec_show(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    projection_id: Annotated[str, typer.Argument(help="Projection id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    spec = Kernel(home).load_projection_spec(project_id, projection_id)
+    typer.echo(yaml.safe_dump(spec.model_dump(mode="json"), allow_unicode=True, sort_keys=False))
+
+
+@project_app.command("projection-spec-save")
+def project_projection_spec_save(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    spec_path: Annotated[Path, typer.Argument(help="YAML ProjectionSpec path.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    spec = ProjectionSpec.model_validate(yaml.safe_load(spec_path.read_text(encoding="utf-8")))
+    saved = Kernel(home).create_projection_spec(project_id, spec)
+    typer.echo(f"{saved.projection_id}\t{saved.output_path}")
+
+
+@project_app.command("projection-spec-update")
+def project_projection_spec_update(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    projection_id: Annotated[str, typer.Argument(help="Projection id.")],
+    patch_path: Annotated[Path, typer.Argument(help="YAML patch with ProjectionSpec fields.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    changes = yaml.safe_load(patch_path.read_text(encoding="utf-8")) or {}
+    changes.pop("projection_id", None)
+    updated = Kernel(home).update_projection_spec(project_id, projection_id, changes)
+    typer.echo(f"{updated.projection_id}\t{updated.output_path}\t{updated.title}")
+
+
+@project_app.command("projection-spec-delete")
+def project_projection_spec_delete(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    projection_id: Annotated[str, typer.Argument(help="Projection id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    Kernel(home).delete_projection_spec(project_id, projection_id)
+    typer.echo(f"{projection_id}: deleted")
+
+
 @snapshot_app.command("create")
 def snapshot_create(
     message: Annotated[str, typer.Option("--message", "-m", help="Snapshot message.")],
@@ -440,3 +557,11 @@ def snapshot_list(
 
 def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _echo_maintenance_report(report) -> None:
+    typer.echo(f"Project: {report.project_id}")
+    typer.echo(f"Stale found: {report.stale_found}")
+    typer.echo(f"Expired enforced: {report.expired_enforced}")
+    typer.echo(f"Evidence issues: {report.evidence_issues_found}")
+    typer.echo(f"Projections refreshed: {report.projections_refreshed}")

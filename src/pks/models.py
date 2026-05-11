@@ -51,15 +51,6 @@ class ReviewAction(StrEnum):
     REJECT = "reject"
 
 
-class Qualifier(BaseModel):
-    scope: str | None = None
-    condition: str | None = None
-    temporal: str | None = None
-
-    def is_empty(self) -> bool:
-        return not (self.scope or self.condition or self.temporal)
-
-
 class Evidence(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
@@ -146,7 +137,7 @@ class Claim(BaseModel):
     evidence: list[Evidence] = Field(default_factory=list)
 
     status: ClaimStatus = ClaimStatus.CANDIDATE
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     created_by: str = "human"
     valid_until: date | None = None
@@ -414,6 +405,12 @@ class EvidenceIssue(BaseModel):
     reason: str
 
 
+class ProjectionIssue(BaseModel):
+    projection_id: str
+    output_path: str
+    reason: str
+
+
 class ClaimHealth(BaseModel):
     claim_id: str
     stale: bool = False
@@ -448,6 +445,15 @@ class HealthReport(BaseModel):
             "min_support_violations": self.min_support_violations,
             "evidence_issue_count": len(self.evidence_issues),
         }
+
+
+class MaintenanceReport(BaseModel):
+    project_id: str
+    stale_found: int = 0
+    expired_enforced: int = 0
+    evidence_issues_found: int = 0
+    projections_refreshed: bool = False
+    run_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class SnapshotRecord(BaseModel):

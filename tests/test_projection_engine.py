@@ -1,4 +1,4 @@
-from pks.context import ContextEngine
+from pks.kernel.render import ProjectionEngine
 from pks.models import CapsuleDomain, Claim, ClaimStatus, Evidence, ProjectMetadata, Relation
 
 
@@ -10,7 +10,7 @@ def evidence() -> Evidence:
     )
 
 
-def test_context_excludes_non_accepted_claims() -> None:
+def test_context_excludes_non_accepted_claims(tmp_path) -> None:
     project = ProjectMetadata(
         project_id="pks",
         name="PKS",
@@ -37,7 +37,7 @@ def test_context_excludes_non_accepted_claims() -> None:
         evidence=[evidence()],
     )
 
-    rendered = ContextEngine().render_markdown(project, [accepted, candidate])
+    rendered = ProjectionEngine().render_markdown(project, [accepted, candidate], tmp_path)
 
     assert "independent PKS home" in rendered
     assert "project folder" not in rendered

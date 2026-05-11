@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Review · {{ project.name }}{% endblock %}
+{% block content %}
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.name }}</p>
+    <h1>Candidate Review</h1>
+  </div>
+  <a class="button subtle" href="/projects/{{ project.project_id }}">Project</a>
+</section>
+
+{% if candidates %}
+<section class="panel">
+  <ul class="claim-list">
+    {% for item in candidates %}
+    {% set claim = item.claim %}
+    {% set decision = item.decision %}
+    <li>
+      <div class="claim-row">
+        <div>
+          <a href="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}">{{ claim.claim_id }}</a>
+          <span class="pill">{{ claim.type_value }}</span>
+          <span class="pill tone">{{ decision.action }}</span>
+          <p>{{ claim.display_content() }}</p>
+        </div>
+        <div class="actions">
+          <form method="post" action="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/accept" hx-post="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/accept">
+            <button class="icon-button accept" title="Accept" type="submit">✓</button>
+          </form>
+          <form method="post" action="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/reject" hx-post="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/reject">
+            <button class="icon-button reject" title="Reject" type="submit">×</button>
+          </form>
+        </div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% else %}
+<section class="empty-state"><h2>Queue clear</h2><p>No candidate claims.</p></section>
+{% endif %}
+{% endblock %}
