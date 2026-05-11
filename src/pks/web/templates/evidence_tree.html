@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Evidence Tree · {{ claim.claim_id }}{% endblock %}
+{% block content %}
+{% macro render_node(node) %}
+<li>
+  {% if node.missing %}
+  <div class="tree-node missing">Missing support: {{ node.missing }}</div>
+  {% else %}
+  {% set item = node.claim %}
+  <div class="tree-node">
+    <a href="/projects/{{ project.project_id }}/claims/{{ item.claim_id }}">{{ item.claim_id }}</a>
+    <span class="pill">{{ item.type }}</span>
+    <p>{{ item.content }}</p>
+    {% if node.evidence %}
+    <ul class="evidence-list compact">
+      {% for evidence in node.evidence %}
+      <li><code>{{ evidence.source_ref }}</code><p>{{ evidence.excerpt }}</p></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% if node.supports %}
+  <ul class="tree-list">
+    {% for child in node.supports %}
+    {{ render_node(child) }}
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+</li>
+{% endmacro %}
+
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.name }}</p>
+    <h1>Evidence Tree</h1>
+  </div>
+  <a class="button subtle" href="/projects/{{ project.project_id }}/claims/{{ claim.claim_id }}">Claim</a>
+</section>
+
+<section class="panel">
+  <ul class="tree-list root">
+    {{ render_node(tree) }}
+  </ul>
+</section>
+{% endblock %}

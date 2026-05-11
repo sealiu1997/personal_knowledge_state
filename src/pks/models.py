@@ -51,6 +51,12 @@ class ReviewAction(StrEnum):
     REJECT = "reject"
 
 
+class TokenPermission(StrEnum):
+    READ = "read"
+    WRITE = "write"
+    INVALID = "invalid"
+
+
 class Evidence(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
@@ -316,6 +322,10 @@ class DomainPolicy(BaseModel):
         if claim_type_value in self.min_support:
             return self.min_support[claim_type_value]
         return DomainPolicy.default_for(self.domain).min_support[claim_type_value]
+
+    @property
+    def domain_value(self) -> str:
+        return self.domain.value if isinstance(self.domain, StrEnum) else str(self.domain)
 
 
 class ReviewDecision(BaseModel):

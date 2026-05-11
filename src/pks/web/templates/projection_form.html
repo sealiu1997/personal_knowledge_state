@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == "new" %}New Projection{% else %}Edit Projection{% endif %} · {{ project.name }}{% endblock %}
+{% block content %}
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.name }}</p>
+    <h1>{% if mode == "new" %}New Projection{% else %}Edit Projection{% endif %}</h1>
+  </div>
+  <a class="button subtle" href="/projects/{{ project.project_id }}/projections">Projections</a>
+</section>
+
+<section class="preview-layout wide-left">
+  <form class="panel form-stack" method="post" action="{{ action }}">
+    <div class="form-grid">
+      <label>
+        Projection ID
+        <input name="projection_id" required value="{{ spec.projection_id if spec else '' }}" {% if mode == "edit" %}readonly{% endif %}>
+      </label>
+      <label>
+        Output Path
+        <input name="output_path" required value="{{ spec.output_path if spec else 'projections/custom.md' }}" {% if mode == "edit" and not is_custom %}readonly{% endif %}>
+      </label>
+    </div>
+
+    <div class="form-grid">
+      <label>
+        Title
+        <input name="title" required value="{{ spec.title if spec else '' }}">
+      </label>
+      <label>
+        Description
+        <input name="description" value="{{ spec.description if spec and spec.description else '' }}">
+      </label>
+    </div>
+
+    <section class="subpanel">
+      <h2>Lifecycle</h2>
+      <div class="check-grid">
+        {% for status in ["accepted", "disputed", "expired", "superseded"] %}
+        <label class="check-line">
+          <input type="checkbox" name="include_status" value="{{ status }}" {% if (spec and status in spec.include_status) or (not spec and status == "accepted") %}checked{% endif %}>
+          {{ status }}
+        </label>
+        {% endfor %}
+      </div>
+      <label class="check-line">
+        <input type="checkbox" name="exclude_stale" value="true" {% if not spec or spec.exclude_stale %}checked{% endif %}>
+        Exclude stale claims
+      </label>
+    </section>
+
+    <section class="subpanel">
+      <h2>Filters</h2>
+      <div class="check-grid">
+        {% for claim_type in ["factual", "inference", "preference", "constraint"] %}
+        <label class="check-line">
+          <input type="checkbox" name="filter_types" value="{{ claim_type }}" {% if spec and claim_type in spec.filters.types %}checked{% endif %}>
+          {{ claim_type }}
+        </label>
+        {% endfor %}
+      </div>
+      <label>
+        Tags
+        <input name="filter_tags" value="{{ spec.filters.tags|join(', ') if spec else '' }}">
+      </label>
+      <label>
+        Predicates
+        <input name="filter_predicates" value="{{ spec.filters.predicates|join(', ') if spec else '' }}">
+      </label>
+      <label>
+        Exclude Tags
+        <input name="filter_exclude_tags" value="{{ spec.filters.exclude_tags|join(', ') if spec else '' }}">
+      </label>
+    </section>
+
+    <section class="subpanel">
+      <h2>Order</h2>
+      <div class="check-grid">
+        {% for order in ["type", "created_at", "predicate"] %}
+        <label class="check-line">
+          <input type="checkbox" name="order" value="{{ order }}" {% if (spec and order in spec.order) or (not spec and order in ["type", "created_at"]) %}checked{% endif %}>
+          {{ order }}
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+
+    <div class="actions">
+      <button class="button accent" type="submit">Save</button>
+      <button class="button subtle" type="button" id="preview-button">Preview</button>
+    </div>
+  </form>
+
+  <aside class="panel">
+    <div class="panel-head">
+      <h2>Live Preview</h2>
+      <span class="pill" id="preview-count">{{ preview.claim_count if preview else 0 }} claims</span>
+    </div>
+    <pre class="markdown-preview" id="projection-preview">{{ preview.markdown if preview else "Adjust rules to preview before saving." }}</pre>
+  </aside>
+</section>
+
+<script>
+(() => {
+  const button = document.getElementById("preview-button");
+  const form = document.querySelector("form.form-stack");
+  const preview = document.getElementById("projection-preview");
+  const count = document.getElementById("preview-count");
+  const endpoint = "{% if mode == 'new' %}/api/projects/{{ project.project_id }}/projections/preview{% else %}/api/projects/{{ project.project_id }}/projections/{{ spec.projection_id }}/preview{% endif %}";
+  let timer = null;
+
+  function values(name) {
+    return [...form.querySelectorAll(`[name='${name}']:checked`)].map((item) => item.value);
+  }
+
+  function value(name) {
+    const input = form.querySelector(`[name='${name}']`);
+    return input ? input.value.trim() : "";
+  }
+
+  function csv(name) {
+    const input = form.querySelector(`[name='${name}']`);
+    return input.value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+
+  function payload() {
+    return {
+      projection_id: value("projection_id"),
+      output_path: value("output_path"),
+      title: value("title") || value("projection_id") || "Preview",
+      description: value("description") || null,
+      include_status: values("include_status"),
+      exclude_stale: !!form.querySelector("[name='exclude_stale']:checked"),
+      filters: {
+        types: values("filter_types"),
+        tags: csv("filter_tags"),
+        predicates: csv("filter_predicates"),
+        exclude_tags: csv("filter_exclude_tags")
+      },
+      order: values("order")
+    };
+  }
+
+  async function refreshPreview() {
+    button.disabled = true;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify(payload())
+    });
+    if (!response.ok) {
+      preview.textContent = "Preview unavailable. Check the required fields.";
+      count.textContent = "0 claims";
+      button.disabled = false;
+      return;
+    }
+    const data = await response.json();
+    preview.textContent = data.markdown || "";
+    count.textContent = `${data.claim_count || 0} claims`;
+    button.disabled = false;
+  }
+
+  button.addEventListener("click", refreshPreview);
+  form.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(refreshPreview, 250);
+  });
+  form.addEventListener("change", () => {
+    clearTimeout(timer);
+    refreshPreview();
+  });
+})();
+</script>
+{% endblock %}

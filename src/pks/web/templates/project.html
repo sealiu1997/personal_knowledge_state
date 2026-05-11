@@ -9,7 +9,10 @@
   </div>
   <div class="actions">
     <a class="button" href="/projects/{{ project.project_id }}/review">Review {{ candidate_count }}</a>
+    <a class="button subtle" href="/projects/{{ project.project_id }}/claims/new">New Claim</a>
     <a class="button subtle" href="/projects/{{ project.project_id }}/claims">Browse Claims</a>
+    <a class="button subtle" href="/projects/{{ project.project_id }}/projections">Projections</a>
+    <a class="button subtle" href="/projects/{{ project.project_id }}/config">Config</a>
     <form method="post" action="/projects/{{ project.project_id }}/maintain" hx-post="/projects/{{ project.project_id }}/maintain">
       <button class="button accent" type="submit">Maintain</button>
     </form>

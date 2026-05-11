@@ -6,7 +6,11 @@
     <p class="eyebrow">{{ project.name }} · {{ claim.status_value }}</p>
     <h1>{{ claim.claim_id }}</h1>
   </div>
-  <a class="button subtle" href="/projects/{{ project.project_id }}/claims">Claims</a>
+  <div class="actions">
+    <a class="button subtle" href="/projects/{{ project.project_id }}/claims/{{ claim.claim_id }}/edit">Edit</a>
+    <a class="button subtle" href="/projects/{{ project.project_id }}/claims/{{ claim.claim_id }}/evidence-tree">Evidence Tree</a>
+    <a class="button subtle" href="/projects/{{ project.project_id }}/claims">Claims</a>
+  </div>
 </section>
 
 <section class="panel detail">

@@ -6,14 +6,40 @@
     <p class="eyebrow">{{ project.name }}</p>
     <h1>Claim Browser</h1>
   </div>
-  <a class="button subtle" href="/projects/{{ project.project_id }}">Project</a>
+  <div class="actions">
+    <a class="button accent" href="/projects/{{ project.project_id }}/claims/new">New Claim</a>
+    <a class="button subtle" href="/projects/{{ project.project_id }}">Project</a>
+  </div>
 </section>
 
 <form class="filter-bar" method="get">
-  <input name="status" placeholder="status" value="{{ filters.status or '' }}">
-  <input name="type" placeholder="type" value="{{ filters.type or '' }}">
+  <select name="type">
+    <option value="">all types</option>
+    {% for option in ["factual", "inference", "preference", "constraint"] %}
+    <option value="{{ option }}" {% if filters.type == option %}selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+  </select>
+  <select name="status">
+    <option value="">all status</option>
+    {% for option in ["accepted", "candidate", "disputed", "expired", "superseded"] %}
+    <option value="{{ option }}" {% if filters.status == option %}selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+  </select>
   <input name="domain" placeholder="domain" value="{{ filters.domain or '' }}">
   <input name="tag" placeholder="tag" value="{{ filters.tag or '' }}">
+  <input name="subject" placeholder="subject" value="{{ filters.subject or '' }}">
+  <input name="predicate" placeholder="predicate" value="{{ filters.predicate or '' }}">
+  <select name="projection">
+    <option value="">all projections</option>
+    {% for projection in projections %}
+    <option value="{{ projection.projection_id }}" {% if filters.projection == projection.projection_id %}selected{% endif %}>{{ projection.title }}</option>
+    {% endfor %}
+  </select>
+  <select name="sort">
+    <option value="">claim id</option>
+    <option value="created_desc" {% if filters.sort == "created_desc" %}selected{% endif %}>latest created</option>
+    <option value="verified_desc" {% if filters.sort == "verified_desc" %}selected{% endif %}>recently verified</option>
+  </select>
   <button class="button" type="submit">Filter</button>
 </form>
 
@@ -26,6 +52,10 @@
       <span class="pill">{{ claim.status_value }}</span>
       <span class="pill tone">{{ claim.type_value }}</span>
       <p>{{ claim.display_content() }}</p>
+      <div class="inline-actions">
+        <a href="/projects/{{ project.project_id }}/claims/{{ claim.claim_id }}/edit">Edit</a>
+        <a href="/projects/{{ project.project_id }}/claims/{{ claim.claim_id }}/evidence-tree">Evidence tree</a>
+      </div>
     </li>
     {% endfor %}
   </ul>

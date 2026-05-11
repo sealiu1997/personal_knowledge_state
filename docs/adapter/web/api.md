@@ -146,3 +146,44 @@
 | 404 | 资源不存在 |
 | 422 | 校验失败（min_support、类型层级等） |
 | 500 | 内部错误 |
+
+
+### 投影预览与规则管理（P3.1）
+
+| Method | Path | Kernel Method | 说明 |
+|--------|------|---------------|------|
+| GET | `/api/projects/{id}/projections` | `list_projections` | 投影列表 + 每个的 Claim 计数 |
+| GET | `/api/projects/{id}/projections/{pid}/render` | `render_projection(pid)` | 实时渲染单个投影（返回 Markdown） |
+| GET | `/api/projects/{id}/projections/{pid}/claims` | `list_claims(projection=pid)` | 该投影匹配的 Claims |
+| GET | `/api/projects/{id}/pks-md` | `render_context` | 实时渲染完整 PKS.md |
+| POST | `/api/projects/{id}/projections/{pid}/write` | `render_projection(pid, write=True)` | 写入磁盘 |
+| POST | `/api/projects/{id}/pks-md/write` | `render_projection(write=True)` | 写入项目根目录 |
+| GET | `/api/projects/{id}/projections/{pid}` | `load_projection_spec` | 获取 ProjectionSpec |
+| POST | `/api/projects/{id}/projections/{pid}` | `update_projection_spec` | 更新 ProjectionSpec |
+| POST | `/api/projects/{id}/projections` | `create_projection_spec` | 新建自定义 ProjectionSpec |
+| DELETE | `/api/projects/{id}/projections/{pid}` | `delete_projection_spec` | 删除自定义投影 |
+| POST | `/api/projects/{id}/projections/preview` | (临时渲染) | 预览新建临时 spec（不保存） |
+| POST | `/api/projects/{id}/projections/{pid}/preview` | (临时渲染) | 预览临时 spec（不保存） |
+
+**预览端点请求体**（临时 spec，用于编辑时实时反馈）：
+```json
+{
+  "include_status": ["accepted"],
+  "exclude_stale": true,
+  "filters": {
+    "types": ["factual", "inference"],
+    "tags": ["architecture", "design-decision"],
+    "predicates": [],
+    "exclude_tags": ["audit"]
+  },
+  "order": ["type", "created_at"]
+}
+```
+
+**预览端点响应**：
+```json
+{
+  "markdown": "<!-- Generated from Claims -->\n# Architecture...",
+  "claim_count": 5
+}
+```

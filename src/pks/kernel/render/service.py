@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 
 from pks.kernel.capsule import ProjectRegistry
+from pks.kernel.capsule.layout import default_projection_specs
 from pks.kernel.claim.workflow import ClaimWorkflow
 from pks.kernel.health import HealthEngine
 from pks.kernel.render.projection import ProjectionEngine, claim_matches_projection
@@ -68,6 +69,27 @@ class ProjectionService:
             return self.engine.render_markdown(project, claims, capsule_path, specs, stale_ids)
         return self.engine.write_projection(project, claims, capsule_path, specs, stale_ids)
 
+    def preview_projection_spec(self, project_id: str, spec: ProjectionSpec) -> dict[str, object]:
+        project = self.registry.load_project(project_id)
+        claims = self._context_claims(project)
+        stale_ids = self.health.stale_claim_ids_for(project_id, claims)
+        matched_claims = self.matching_claims(project_id, spec)
+        return {
+            "markdown": self.engine.render_projection(spec, claims, stale_ids),
+            "claim_count": len(matched_claims),
+        }
+
+    def matching_claims(self, project_id: str, spec: ProjectionSpec) -> list[Claim]:
+        project = self.registry.load_project(project_id)
+        claims = self._context_claims(project)
+        stale_ids = self.health.stale_claim_ids_for(project_id, claims)
+        return [
+            claim
+            for claim in claims
+            if claim_matches_projection(claim, spec, stale_ids)
+            and not claim.project.startswith("domain:")
+        ]
+
     def check_integrity(self, project_id: str) -> list[ProjectionIssue]:
         capsule_path = self.registry.capsule_path(project_id)
         hashes = self.registry.load_projection_hashes(project_id)
@@ -87,11 +109,25 @@ class ProjectionService:
         project = self.registry.load_project(project_id)
         return self.registry.list_projection_specs(project_id, project.capsule_type)
 
+    def list_custom_projection_ids(self, project_id: str) -> set[str]:
+        project = self.registry.load_project(project_id)
+        builtin_ids = self._builtin_projection_ids(project)
+        return {
+            spec.projection_id
+            for spec in self.registry.list_custom_projection_specs(project_id)
+            if spec.projection_id not in builtin_ids
+        }
+
     def load_projection_spec(self, project_id: str, projection_id: str) -> ProjectionSpec:
         return self.projection_spec(self.registry.load_project(project_id), projection_id)
 
     def create_projection_spec(self, project_id: str, spec: ProjectionSpec) -> ProjectionSpec:
         project = self.registry.load_project(project_id)
+        if spec.projection_id in {
+            existing.projection_id
+            for existing in self.registry.list_projection_specs(project_id, project.capsule_type)
+        }:
+            raise ValueError(f"projection already exists: {spec.projection_id}")
         saved = self.registry.save_projection_spec(project_id, spec)
         self.claims.audit_factory(project).record(
             project,
@@ -111,8 +147,14 @@ class ProjectionService:
         changes: dict[str, object],
     ) -> ProjectionSpec:
         project = self.registry.load_project(project_id)
+        builtin_ids = self._builtin_projection_ids(project)
+        normalized_changes = dict(changes)
+        normalized_changes.pop("projection_id", None)
+        if projection_id in builtin_ids:
+            normalized_changes.pop("output_path", None)
         data = self.projection_spec(project, projection_id).model_dump(mode="python")
-        data.update(changes)
+        data.update(normalized_changes)
+        data["projection_id"] = projection_id
         updated = ProjectionSpec.model_validate(data)
         saved = self.registry.save_projection_spec(project_id, updated)
         self.claims.audit_factory(project).record(
@@ -121,13 +163,18 @@ class ProjectionService:
             subject=f"projection {projection_id}",
             predicate="was_updated_by",
             object_="kernel",
-            payload={"projection_id": projection_id, "fields": ",".join(sorted(changes))},
+            payload={
+                "projection_id": projection_id,
+                "fields": ",".join(sorted(normalized_changes)),
+            },
         )
         self.render_projection(project_id, write=True)
         return saved
 
     def delete_projection_spec(self, project_id: str, projection_id: str) -> None:
         project = self.registry.load_project(project_id)
+        if projection_id in self._builtin_projection_ids(project):
+            raise ValueError(f"default projection cannot be deleted: {projection_id}")
         spec = self.projection_spec(project, projection_id)
         self.registry.delete_projection_spec(project_id, projection_id)
         (self.registry.capsule_path(project_id) / spec.output_path).unlink(missing_ok=True)
@@ -211,6 +258,9 @@ class ProjectionService:
             output_path=spec.output_path,
             reason=reason,
         )
+
+    def _builtin_projection_ids(self, project: ProjectMetadata) -> set[str]:
+        return {spec.projection_id for spec in default_projection_specs(project.capsule_type)}
 
     def _record_projection_hash(self, project_id: str, spec: ProjectionSpec, path: Path) -> None:
         hashes = self.registry.load_projection_hashes(project_id)

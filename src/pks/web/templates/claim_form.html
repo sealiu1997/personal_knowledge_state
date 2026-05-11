@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == "edit" %}Edit{% else %}New{% endif %} Claim · {{ project.name }}{% endblock %}
+{% block content %}
+{% set draft = draft if draft is defined else {} %}
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.name }}</p>
+    <h1>{% if mode == "edit" %}Edit Claim{% else %}New Claim{% endif %}</h1>
+  </div>
+  <a class="button subtle" href="/projects/{{ project.project_id }}/claims">Claims</a>
+</section>
+
+{% if decision %}
+<section class="panel notice danger">
+  <strong>{{ decision.action }}</strong>
+  <p>{{ decision.reason }}</p>
+  {% if decision.min_support_status.details %}
+  <ul>
+    {% for detail in decision.min_support_status.details %}
+    <li>{{ detail }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+
+<form class="panel form-stack" id="claim-form" method="post" action="{{ action }}">
+  {% if mode == "edit" %}
+  <label>
+    Projection
+    <select name="projection">
+      {% for projection in projections %}
+      <option value="{{ projection.projection_id }}" {% if projection_id == projection.projection_id %}selected{% endif %}>{{ projection.title }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% endif %}
+
+  <div class="form-grid">
+    <label>
+      Type
+      <select name="type" {% if mode == "edit" %}disabled{% endif %}>
+        {% for option in ["factual", "inference", "preference", "constraint"] %}
+        <option value="{{ option }}" {% if (claim and claim.type_value == option) or draft.get("type") == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Confidence
+      <input name="confidence" type="number" step="0.05" min="0" max="1" value="{{ claim.confidence if claim else draft.get('confidence', 1.0) }}">
+    </label>
+    <label>
+      Created by
+      <input name="created_by" value="{{ claim.created_by if claim else draft.get('created_by', 'human') }}">
+    </label>
+  </div>
+
+  <div class="support-note">
+    <strong>Min support</strong>
+    <span id="support-summary">factual: 1 evidence</span>
+    <span id="support-counts">0 evidence · 0 supporting claims</span>
+  </div>
+  {% if mode == "new" %}
+  <ul class="support-issues" id="support-issues"></ul>
+  {% endif %}
+
+  <div class="form-grid">
+    <label>
+      Subject
+      <input name="subject" required value="{{ claim.subject if claim else draft.get('subject', '') }}">
+    </label>
+    <label>
+      Predicate
+      <input name="predicate" required value="{{ claim.predicate if claim else draft.get('predicate', '') }}">
+    </label>
+    <label>
+      Object
+      <input name="object" required value="{{ claim.object if claim else draft.get('object', '') }}">
+    </label>
+  </div>
+
+  <label>
+    Qualifier
+    <input name="qualifier" value="{{ claim.qualifier if claim and claim.qualifier else draft.get('qualifier', '') }}">
+  </label>
+
+  <label>
+    Content
+    <textarea name="content" required>{{ claim.content if claim else draft.get('content', '') }}</textarea>
+  </label>
+
+  <label>
+    Tags
+    <input name="tags" value="{{ claim.tags|join(', ') if claim else draft.get('tags', '') }}">
+  </label>
+
+  {% if mode == "new" %}
+  <section class="subpanel">
+    <div class="panel-head">
+      <h2>Evidence</h2>
+      <button class="button subtle" type="button" id="add-evidence">Add Evidence</button>
+    </div>
+    <div class="evidence-editor" id="evidence-editor">
+      {% set evidence_rows = draft.get('evidence') if draft.get('evidence') else [None] %}
+      {% for item in evidence_rows %}
+      <div class="evidence-row">
+        <div class="form-grid">
+          <label>
+            Source
+            <input name="source_ref" value="{{ item.source_ref if item else 'manual' }}">
+          </label>
+          <label>
+            Source type
+            <select name="source_type">
+              <option value="" {% if not item or not item.source_type %}selected{% endif %}>infer</option>
+              {% for option in ["file", "url", "manual", "command", "conversation"] %}
+              <option value="{{ option }}" {% if item and item.source_type == option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Relation
+            <select name="relation">
+              <option value="supports" {% if not item or item.relation == "supports" %}selected{% endif %}>supports</option>
+              <option value="weak_supports" {% if item and item.relation == "weak_supports" %}selected{% endif %}>weak_supports</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Excerpt
+          <textarea name="excerpt">{{ item.excerpt if item else 'Submitted from PKS Web UI' }}</textarea>
+        </label>
+        <label>
+          Locator
+          <input name="locator" value="{{ item.locator if item and item.locator else '' }}">
+        </label>
+        <button class="button subtle remove-evidence" type="button">Remove</button>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="subpanel">
+    <h2>Supporting Claims</h2>
+    <select name="supporting_claims" id="supporting-claims" multiple size="6">
+      {% for support in accepted_claims %}
+      <option value="{{ support.claim_id }}" data-type="{{ support.type_value }}">{{ support.claim_id }} · {{ support.type_value }} · {{ support.display_content() }}</option>
+      {% endfor %}
+    </select>
+  </section>
+  {% endif %}
+
+  <div class="actions">
+    <button class="button accent" id="claim-submit" type="submit">{% if mode == "edit" %}Save{% else %}Submit Candidate{% endif %}</button>
+  </div>
+</form>
+{% if mode == "new" %}
+<script>
+(() => {
+  const rules = {
+    factual: {
+      evidence: 1,
+      claims: 0,
+      total: 1,
+      humanSource: false,
+      allowed: [],
+      summary: "factual: 1 evidence"
+    },
+    inference: {
+      evidence: 0,
+      claims: 0,
+      total: 1,
+      humanSource: false,
+      allowed: ["factual"],
+      summary: "inference: evidence or accepted factual support"
+    },
+    preference: {
+      evidence: 1,
+      claims: 0,
+      total: 1,
+      humanSource: true,
+      allowed: ["factual", "inference"],
+      summary: "preference: human evidence"
+    },
+    constraint: {
+      evidence: 1,
+      claims: 1,
+      total: 2,
+      humanSource: false,
+      allowed: ["factual", "inference", "preference"],
+      summary: "constraint: evidence + supporting claim"
+    }
+  };
+  const form = document.getElementById("claim-form");
+  const typeSelect = form.querySelector("select[name='type']");
+  const supportSelect = document.getElementById("supporting-claims");
+  const evidenceEditor = document.getElementById("evidence-editor");
+  const addEvidenceButton = document.getElementById("add-evidence");
+  const summary = document.getElementById("support-summary");
+  const counts = document.getElementById("support-counts");
+  const issues = document.getElementById("support-issues");
+  const submit = document.getElementById("claim-submit");
+
+  function evidenceRows() {
+    return [...evidenceEditor.querySelectorAll(".evidence-row")];
+  }
+
+  function filledEvidenceRows() {
+    return evidenceRows().filter((row) => {
+      const source = row.querySelector("[name='source_ref']").value.trim();
+      const excerpt = row.querySelector("[name='excerpt']").value.trim();
+      return source || excerpt;
+    });
+  }
+
+  function hasHumanEvidence(rows) {
+    return rows.some((row) => {
+      const source = row.querySelector("[name='source_ref']").value.trim().toLowerCase();
+      const type = row.querySelector("[name='source_type']").value;
+      return type === "manual" || type === "conversation" || source === "manual";
+    });
+  }
+
+  function selectedSupportingClaims() {
+    return [...supportSelect.selectedOptions].filter((option) => !option.hidden);
+  }
+
+  function syncAllowedSupport() {
+    const rule = rules[typeSelect.value] || rules.factual;
+    [...supportSelect.options].forEach((option) => {
+      const allowed = rule.allowed.includes(option.dataset.type);
+      option.hidden = !allowed;
+      option.disabled = !allowed;
+      if (!allowed) option.selected = false;
+    });
+  }
+
+  function validate() {
+    syncAllowedSupport();
+    const rule = rules[typeSelect.value] || rules.factual;
+    const evidenceCount = filledEvidenceRows().length;
+    const supportCount = selectedSupportingClaims().length;
+    const messages = [];
+    if (evidenceCount < rule.evidence) messages.push(`Needs ${rule.evidence} evidence item(s)`);
+    if (supportCount < rule.claims) messages.push(`Needs ${rule.claims} supporting claim(s)`);
+    if (evidenceCount + supportCount < rule.total) messages.push(`Needs total support >= ${rule.total}`);
+    if (rule.humanSource && !hasHumanEvidence(filledEvidenceRows())) {
+      messages.push("Needs manual or conversation evidence");
+    }
+    summary.textContent = rule.summary;
+    counts.textContent = `${evidenceCount} evidence · ${supportCount} supporting claims`;
+    issues.innerHTML = messages.map((message) => `<li>${message}</li>`).join("");
+    issues.classList.toggle("clear", messages.length === 0);
+    submit.disabled = messages.length > 0;
+  }
+
+  function addEvidenceRow() {
+    const template = evidenceRows()[0].cloneNode(true);
+    template.querySelectorAll("input, textarea").forEach((input) => {
+      input.value = input.name === "source_ref" ? "manual" : "";
+    });
+    template.querySelector("[name='excerpt']").value = "Submitted from PKS Web UI";
+    template.querySelector("[name='source_type']").value = "";
+    template.querySelector("[name='relation']").value = "supports";
+    evidenceEditor.appendChild(template);
+    validate();
+  }
+
+  addEvidenceButton.addEventListener("click", addEvidenceRow);
+  form.addEventListener("input", validate);
+  form.addEventListener("change", validate);
+  evidenceEditor.addEventListener("click", (event) => {
+    if (!event.target.classList.contains("remove-evidence")) return;
+    if (evidenceRows().length === 1) {
+      const row = evidenceRows()[0];
+      row.querySelectorAll("input, textarea").forEach((input) => {
+        input.value = input.name === "source_ref" ? "manual" : "";
+      });
+      row.querySelector("[name='excerpt']").value = "";
+    } else {
+      event.target.closest(".evidence-row").remove();
+    }
+    validate();
+  });
+  validate();
+})();
+</script>
+{% endif %}
+{% endblock %}

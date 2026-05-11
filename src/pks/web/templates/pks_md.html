@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}PKS.md · {{ project.name }}{% endblock %}
+{% block content %}
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.name }}</p>
+    <h1>PKS.md Preview</h1>
+  </div>
+  <div class="actions">
+    <form method="post" action="/projects/{{ project.project_id }}/pks-md/write">
+      <button class="button accent" type="submit">Write PKS.md</button>
+    </form>
+    <a class="button subtle" href="/projects/{{ project.project_id }}/projections">Projections</a>
+  </div>
+</section>
+
+<section class="panel">
+  <pre class="markdown-preview">{{ markdown }}</pre>
+</section>
+{% endblock %}

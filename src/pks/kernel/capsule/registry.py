@@ -114,6 +114,9 @@ class ProjectRegistry:
     def load_policy(self, domain: CapsuleDomain | str) -> DomainPolicy:
         return self.policy.load_policy(domain)
 
+    def save_policy(self, policy: DomainPolicy) -> DomainPolicy:
+        return self.policy.save_policy(policy)
+
     def validate_policy(self, domain: CapsuleDomain | str) -> list[str]:
         return self.policy.validate_policy(domain)
 

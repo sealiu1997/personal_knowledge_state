@@ -15,6 +15,11 @@
 | 证据链 | `/projects/{id}/claims/{cid}/evidence-tree` | 树形可视化 | P3 |
 | 配置管理 | `/projects/{id}/config` | 领域策略、投影规则编辑 | P3 |
 | MCP Token | `/tokens` | Token 列表、regenerate、copy | P3 |
+| 投影列表 | `/projects/{id}/projections` | 所有投影 + Claim 计数 | P3.1 |
+| 投影预览 | `/projects/{id}/projections/{pid}` | 实时渲染单个投影 | P3.1 |
+| PKS.md 预览 | `/projects/{id}/pks-md` | 完整 PKS.md 聚合预览 | P3.1 |
+| 投影规则编辑 | `/projects/{id}/projections/{pid}/edit` | 左右分栏（规则 + 实时预览） | P3.1 |
+| 新建投影 | `/projects/{id}/projections/new` | 新建自定义 ProjectionSpec | P3.1 |
 
 ---
 
@@ -147,3 +152,117 @@
 - 新建 token 按钮（输入 label → 生成 → 显示一次完整 token）
 
 **约束**：Token 的生成/撤销逻辑在 MCP 模块，Web UI 只调用 MCP 模块的接口展示结果。
+
+
+---
+
+## 投影列表 `/projects/{id}/projections`
+
+**数据需求**：`list_projections(project_id)` + 每个投影匹配的 Claim 计数
+
+**展示**：
+- 表格：projection_id、title、output_path、匹配 Claim 数、类型（默认/自定义）
+- 默认投影标记为"内置"，自定义投影标记为"自定义"
+- 每行操作：预览、编辑规则、写入文件
+- 自定义投影额外操作：删除
+- 顶部按钮："新建自定义投影"、"预览 PKS.md"
+
+---
+
+## 投影预览 `/projects/{id}/projections/{pid}`
+
+**数据需求**：`render_projection(project_id, projection_id)` + 匹配的 Claims 列表
+
+**展示**：
+- 顶部：投影标题、output_path、规则摘要（filters/order/exclude_stale）
+- 主体：渲染后的 Markdown（转为 HTML 展示）
+- 侧栏或下方：该投影匹配的 Claim 列表（claim_id + type + content，点击跳转详情）
+- 操作按钮："编辑规则"、"写入文件"（触发 `render_projection(write=True)`）
+
+**关键**：预览是实时从 Claims 渲染的，不是读取磁盘文件。用户看到的永远是最新状态。
+
+---
+
+## PKS.md 预览 `/projects/{id}/pks-md`
+
+**数据需求**：`render_context(project_id)`
+
+**展示**：
+- 完整的 PKS.md 内容（所有投影按继承顺序聚合 + TasteAndStyle）
+- 这就是 Agent 和人类在项目根目录看到的内容
+- 操作按钮："重新生成并写入项目目录"
+
+---
+
+## 投影规则编辑 `/projects/{id}/projections/{pid}/edit`
+
+**数据需求**：`load_projection_spec(project_id, projection_id)` + 实时预览
+
+**布局**：左右分栏
+
+```text
+┌──────────────────────────┬──────────────────────────────────┐
+│ 规则表单                  │ 实时预览                          │
+│                          │                                  │
+│ Title: [Architecture]    │ <!-- Generated from Claims -->   │
+│ Output: [projections/    │ # Architecture & Decisions       │
+│          architecture.md]│                                  │
+│                          │ - F-00042 [factual] PKS uses...  │
+│ Include status:          │ - I-00017 [inference] Kernel...  │
+│ [✓] accepted             │ - C-00008 [constraint] 投影...   │
+│ [ ] disputed             │                                  │
+│                          │ 匹配 Claims: 3                   │
+│ Exclude stale: [✓]      │                                  │
+│                          │                                  │
+│ Filters:                 │                                  │
+│ Types: [✓]factual        │                                  │
+│        [✓]inference      │                                  │
+│        [ ]preference     │                                  │
+│        [✓]constraint     │                                  │
+│                          │                                  │
+│ Tags: [architecture,     │                                  │
+│  design-decision,        │                                  │
+│  tech-stack, boundary]   │                                  │
+│                          │                                  │
+│ Predicates: [         ]  │                                  │
+│ Exclude tags: [audit]    │                                  │
+│                          │                                  │
+│ Order: [type, created_at]│                                  │
+│                          │                                  │
+│ [预览] [保存]            │                                  │
+└──────────────────────────┴──────────────────────────────────┘
+```
+
+**交互**：
+- 修改 filter → 点击"预览"→ 右侧实时更新渲染结果（htmx 局部刷新）
+- "保存"调用 `update_projection_spec`（有 Audit Claim）
+- 默认投影：projection_id 和 output_path 不可修改，只能改 filters/order
+- 自定义投影：所有字段可编辑
+
+**约束**：
+- 预览使用临时 spec（不保存），通过 preview 端点实现
+- 保存后自动重新生成投影文件
+
+---
+
+## 新建投影 `/projects/{id}/projections/new`
+
+**数据需求**：无（空表单）
+
+**表单字段**：
+
+| 字段 | 输入方式 | 必须 | 说明 |
+|------|----------|------|------|
+| projection_id | 文本输入 | ✅ | 稳定 ID（kebab-case） |
+| output_path | 文本输入 | ✅ | 相对路径，必须 .md 结尾 |
+| title | 文本输入 | ✅ | Markdown 标题 |
+| description | 文本输入 | 可选 | 投影用途说明 |
+| include_status | 多选 | ✅ | accepted / disputed / expired / superseded |
+| exclude_stale | 开关 | ✅ | 默认 true |
+| filters.types | 多选 | 可选 | factual / inference / preference / constraint |
+| filters.tags | 标签输入 | 可选 | 逗号分隔 |
+| filters.predicates | 标签输入 | 可选 | 逗号分隔 |
+| filters.exclude_tags | 标签输入 | 可选 | 逗号分隔 |
+| order | 下拉多选 | ✅ | type / created_at / predicate |
+
+**提交后**：调用 `create_projection_spec` → 跳转到该投影的预览页

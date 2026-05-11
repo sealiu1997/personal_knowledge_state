@@ -8,6 +8,8 @@ import yaml
 
 from pks import __version__
 from pks.kernel import Kernel
+from pks.mcp.auth import McpTokenManager
+from pks.mcp.config import DEFAULT_TOKEN_PERMISSIONS
 from pks.models import (
     CapsuleDomain,
     Claim,
@@ -30,11 +32,15 @@ project_app = typer.Typer(help="Manage Capsules and projections.")
 review_app = typer.Typer(help="Review candidate Claims.")
 policy_app = typer.Typer(help="Inspect and validate domain policies.")
 snapshot_app = typer.Typer(help="Create and list explicit PKS home snapshots.")
+mcp_app = typer.Typer(help="Run the PKS MCP server and manage MCP tokens.")
+mcp_token_app = typer.Typer(help="Manage MCP write tokens.")
 app.add_typer(claim_app, name="claim")
 app.add_typer(project_app, name="project")
 app.add_typer(review_app, name="review")
 app.add_typer(policy_app, name="policy")
 app.add_typer(snapshot_app, name="snapshot")
+app.add_typer(mcp_app, name="mcp")
+mcp_app.add_typer(mcp_token_app, name="token")
 
 
 @app.callback()
@@ -184,6 +190,77 @@ def serve(
     from pks.web import create_app
 
     uvicorn.run(create_app(home), host=host, port=port)
+
+
+@mcp_app.command("start")
+def mcp_start(
+    transport: Annotated[
+        str,
+        typer.Option("--transport", help="MCP transport: stdio or sse."),
+    ] = "stdio",
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    from pks.mcp.server import run_server
+
+    if transport not in {"stdio", "sse"}:
+        raise typer.BadParameter("transport must be stdio or sse")
+    try:
+        run_server(home, transport=transport)
+    except RuntimeError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+
+@mcp_token_app.command("create")
+def mcp_token_create(
+    label: Annotated[str, typer.Option("--label", help="Human-readable token label.")],
+    permissions: Annotated[
+        str,
+        typer.Option("--permissions", help="Comma-separated permissions."),
+    ] = ",".join(DEFAULT_TOKEN_PERMISSIONS),
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    token = McpTokenManager(home).create_token(label, _split_csv(permissions))
+    typer.echo(f"Token ID: {token['token_id']}")
+    typer.echo(f"Label: {token['label']}")
+    typer.echo(f"Permissions: {','.join(token['permissions'])}")
+    typer.echo(f"Token: {token['token']}")
+
+
+@mcp_token_app.command("list")
+def mcp_token_list(
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    tokens = McpTokenManager(home).list_tokens()
+    if not tokens:
+        typer.echo("No MCP tokens.")
+        return
+    for token in tokens:
+        typer.echo(
+            f"{token['token_id']}\t{','.join(token['permissions'])}\t"
+            f"{token['label']}\t{token['created_at']}"
+        )
+
+
+@mcp_token_app.command("revoke")
+def mcp_token_revoke(
+    token_id: Annotated[str, typer.Argument(help="Token id to revoke.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    McpTokenManager(home).revoke_token(token_id)
+    typer.echo(f"{token_id}: revoked")
+
+
+@mcp_token_app.command("regenerate")
+def mcp_token_regenerate(
+    token_id: Annotated[str, typer.Argument(help="Token id to regenerate.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    token = McpTokenManager(home).regenerate_token(token_id)
+    typer.echo(f"Token ID: {token['token_id']}")
+    typer.echo(f"Label: {token['label']}")
+    typer.echo(f"Permissions: {','.join(token['permissions'])}")
+    typer.echo(f"Token: {token['token']}")
 
 
 @claim_app.command("add")

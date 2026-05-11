@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ spec.title }} · Projection{% endblock %}
+{% block content %}
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.name }} · {{ "custom" if is_custom else "built-in" }}</p>
+    <h1>{{ spec.title }}</h1>
+    <p class="muted">{{ spec.projection_id }} · {{ spec.output_path }}</p>
+  </div>
+  <div class="actions">
+    <a class="button subtle" href="/projects/{{ project.project_id }}/projections/{{ spec.projection_id }}/edit">Edit Rules</a>
+    <form method="post" action="/projects/{{ project.project_id }}/projections/{{ spec.projection_id }}/write">
+      <button class="button accent" type="submit">Write File</button>
+    </form>
+    <a class="button subtle" href="/projects/{{ project.project_id }}/projections">All Projections</a>
+  </div>
+</section>
+
+<section class="preview-layout">
+  <article class="panel">
+    <div class="panel-head">
+      <h2>Live Markdown</h2>
+      <span class="pill">{{ claims|length }} claims</span>
+    </div>
+    <pre class="markdown-preview">{{ markdown }}</pre>
+  </article>
+  <aside class="panel">
+    <h2>Matching Claims</h2>
+    {% if claims %}
+    <ul class="claim-list compact-list">
+      {% for claim in claims %}
+      <li>
+        <a href="/projects/{{ project.project_id }}/claims/{{ claim.claim_id }}">{{ claim.claim_id }}</a>
+        <span class="pill">{{ claim.type_value }}</span>
+        <p>{{ claim.display_content() }}</p>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No claims match this projection.</p>
+    {% endif %}
+  </aside>
+</section>
+{% endblock %}

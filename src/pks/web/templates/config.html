@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Config · {{ project.name }}{% endblock %}
+{% block content %}
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.name }}</p>
+    <h1>Config</h1>
+  </div>
+  <a class="button subtle" href="/projects/{{ project.project_id }}">Project</a>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Domain Policy</h2>
+    <span class="pill">{{ policy.domain }}</span>
+  </div>
+  <form class="form-stack" method="post" action="/projects/{{ project.project_id }}/config">
+    <label>
+      Policy YAML
+      <textarea class="code-editor" name="policy_yaml">{{ policy_yaml }}</textarea>
+    </label>
+    <div class="actions">
+      <button class="button accent" type="submit">Save Policy</button>
+    </div>
+  </form>
+  <div class="policy-grid">
+    {% for claim_type, rule in policy.min_support.items() %}
+    <div class="subpanel">
+      <h3>{{ claim_type }}</h3>
+      <dl class="detail-grid">
+        <div><dt>Evidence</dt><dd>{{ rule.evidence }}</dd></div>
+        <div><dt>Claims</dt><dd>{{ rule.supporting_claims }}</dd></div>
+        <div><dt>Total</dt><dd>{{ rule.evidence_or_claims_min }}</dd></div>
+      </dl>
+      <p class="muted">Allowed: {{ rule.allowed_support_types|join(", ") or "none" }}</p>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Projection Rules</h2>
+  </div>
+  <ul class="claim-list">
+    {% for projection in projections %}
+    <li>
+      <code>{{ projection.projection_id }}</code>
+      <span class="pill">{{ projection.output_path }}</span>
+      <p>{{ projection.title }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

@@ -282,6 +282,61 @@ mcp = [
 - Scheduled MCP health push to Agents
 - Agent instruction file generation (PKS.md already serves this purpose)
 
+## 11. P3 Review Findings (Post-Implementation)
+
+Issues identified during P3 code review:
+
+| Issue | Severity | Action |
+|-------|----------|--------|
+| `web/routes/claims.py` 351 lines | Medium | Split into `claims_api.py` + `claims_pages.py` + `claims_helpers.py` in P3.1 |
+| Kernel facade grew to 404 lines | Medium | Acceptable (pure delegation), monitor growth |
+| Config management page is read-only | Low | Add editing in P3.1 |
+| `mcp/config.py` only 9 lines | Low | Merge into server.py or expand when needed |
+
+## 12. P3.1 Supplement: Projection Preview + Rule Editing
+
+After P3 core delivery, add projection management UI.
+
+### Scope
+
+- MD file preview (real-time rendering from Claims, not disk read)
+- PKS.md full preview (all projections aggregated)
+- ProjectionSpec editing (left-right split: form + live preview)
+- Custom projection creation/deletion
+- Split `claims.py` into focused files
+- Config management editing (policy update)
+
+### Implementation Steps
+
+| Step | Task | Depends on | Deliverable |
+|------|------|------------|-------------|
+| 3.1.1 | Projection list page + API | P3 complete | `/projects/{id}/projections` |
+| 3.1.2 | Single projection preview | 3.1.1 | Real-time render + matched Claims |
+| 3.1.3 | PKS.md full preview | 3.1.2 | Aggregated view + write button |
+| 3.1.4 | Preview endpoint (temp spec) | 3.1.3 | Edit-time live feedback without saving |
+| 3.1.5 | Projection rule edit form | 3.1.4 | Left-right split layout |
+| 3.1.6 | New/delete custom projection | 3.1.5 | Full CRUD |
+| 3.1.7 | Config editing (policy update) | 3.1.6 | Policy form + save endpoint |
+| 3.1.8 | Split claims.py | 3.1.7 | claims_api + claims_pages + claims_helpers |
+| 3.1.9 | Tests | 3.1.8 | All new endpoints tested |
+
+### Acceptance Criteria
+
+- Projection list shows all specs with Claim counts.
+- Single projection preview renders real-time from Claims (not disk file).
+- PKS.md preview shows full aggregation (Base → Domain → Custom → TasteAndStyle).
+- Rule editing form shows live preview on filter change.
+- Preview endpoint accepts temporary spec without saving.
+- Default projections: filters editable, projection_id/output_path locked.
+- Custom projections: full CRUD.
+- Config page supports policy editing (save calls Kernel).
+- `claims.py` split into ≤ 3 focused files.
+
+### Design References
+
+- [`docs/adapter/web/pages.md`](../adapter/web/pages.md) — page layouts and interactions
+- [`docs/adapter/web/api.md`](../adapter/web/api.md) — API endpoint definitions
+
 ---
 
 # 中文版
@@ -549,3 +604,58 @@ mcp = [
 - 多 Agent 协调
 - 定时 MCP 健康推送
 - Agent 说明文件生成（PKS.md 已承担此功能）
+
+## 11. P3 审核发现（实施后）
+
+P3 代码审核中发现的问题：
+
+| 问题 | 严重程度 | 处理 |
+|------|----------|------|
+| `web/routes/claims.py` 351 行 | 中 | P3.1 拆分为 claims_api + claims_pages + claims_helpers |
+| Kernel facade 增长到 404 行 | 中 | 可接受（纯委托），持续关注 |
+| 配置管理页面只读 | 低 | P3.1 增加编辑功能 |
+| `mcp/config.py` 只有 9 行 | 低 | 后续合并或扩展 |
+
+## 12. P3.1 补充：投影预览 + 规则编辑
+
+P3 核心交付后，补充投影管理 UI。
+
+### 范围
+
+- MD 文件预览（从 Claims 实时渲染，不是读磁盘文件）
+- PKS.md 完整预览（所有投影按继承顺序聚合）
+- ProjectionSpec 编辑（左右分栏：规则表单 + 实时预览）
+- 自定义投影新建/删除
+- 拆分 `claims.py` 为聚焦文件
+- 配置管理编辑功能（策略更新）
+
+### 实施步骤
+
+| 步骤 | 任务 | 依赖 | 交付物 |
+|------|------|------|--------|
+| 3.1.1 | 投影列表页 + API | P3 完成 | `/projects/{id}/projections` |
+| 3.1.2 | 单个投影预览 | 3.1.1 | 实时渲染 + 匹配 Claims |
+| 3.1.3 | PKS.md 完整预览 | 3.1.2 | 聚合视图 + 写入按钮 |
+| 3.1.4 | 预览端点（临时 spec） | 3.1.3 | 编辑时实时反馈（不保存） |
+| 3.1.5 | 投影规则编辑表单 | 3.1.4 | 左右分栏布局 |
+| 3.1.6 | 新建/删除自定义投影 | 3.1.5 | 完整 CRUD |
+| 3.1.7 | 配置编辑（策略更新） | 3.1.6 | 策略表单 + 保存端点 |
+| 3.1.8 | 拆分 claims.py | 3.1.7 | claims_api + claims_pages + claims_helpers |
+| 3.1.9 | 测试 | 3.1.8 | 所有新端点测试 |
+
+### 验收标准
+
+- 投影列表展示所有 spec 和 Claim 计数。
+- 单个投影预览从 Claims 实时渲染（不是读磁盘文件）。
+- PKS.md 预览展示完整聚合（Base → Domain → Custom → TasteAndStyle）。
+- 规则编辑表单修改 filter 后实时预览更新。
+- 预览端点接受临时 spec（不保存）。
+- 默认投影：filters 可编辑，projection_id/output_path 锁定。
+- 自定义投影：完整 CRUD。
+- 配置页面支持策略编辑（保存调用 Kernel）。
+- `claims.py` 拆分为 ≤ 3 个聚焦文件。
+
+### 设计参考
+
+- [`docs/adapter/web/pages.md`](../adapter/web/pages.md) — 页面布局和交互
+- [`docs/adapter/web/api.md`](../adapter/web/api.md) — API 端点定义

@@ -216,6 +216,40 @@ def test_cli_project_sync_reports_git_state(tmp_path) -> None:
     assert "Git available: True" in result.output
 
 
+def test_cli_mcp_token_lifecycle(tmp_path) -> None:
+    home = tmp_path / "pks-home"
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "token",
+            "create",
+            "--label",
+            "Codex",
+            "--permissions",
+            "read,write",
+            "--home",
+            str(home),
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Token: pks_" in result.output
+    token_id = next(
+        line.split(":", 1)[1].strip()
+        for line in result.output.splitlines()
+        if line.startswith("Token ID:")
+    )
+
+    result = runner.invoke(app, ["mcp", "token", "list", "--home", str(home)])
+    assert result.exit_code == 0
+    assert token_id in result.output
+    assert "pks_" not in result.output
+
+    result = runner.invoke(app, ["mcp", "token", "revoke", token_id, "--home", str(home)])
+    assert result.exit_code == 0
+    assert "revoked" in result.output
+
+
 def test_cli_projection_spec_and_integrity_commands(tmp_path) -> None:
     home = tmp_path / "pks-home"
     spec_path = tmp_path / "custom-spec.yaml"

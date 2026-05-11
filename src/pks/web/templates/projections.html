@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Projections · {{ project.name }}{% endblock %}
+{% block content %}
+<section class="page-head split">
+  <div>
+    <p class="eyebrow">{{ project.name }}</p>
+    <h1>Projections</h1>
+  </div>
+  <div class="actions">
+    <a class="button accent" href="/projects/{{ project.project_id }}/projections/new">New Projection</a>
+    <a class="button subtle" href="/projects/{{ project.project_id }}/pks-md">PKS.md Preview</a>
+    <a class="button subtle" href="/projects/{{ project.project_id }}">Project</a>
+  </div>
+</section>
+
+<section class="panel">
+  <ul class="claim-list">
+    {% for projection in projections %}
+    <li>
+      <div class="claim-row">
+        <div>
+          <a href="/projects/{{ project.project_id }}/projections/{{ projection.projection_id }}">{{ projection.projection_id }}</a>
+          <span class="pill">{{ projection.kind }}</span>
+          <span class="pill tone">{{ projection.claim_count }} claims</span>
+          <p>{{ projection.title }} · <code>{{ projection.output_path }}</code></p>
+        </div>
+        <div class="actions">
+          <a class="button subtle" href="/projects/{{ project.project_id }}/projections/{{ projection.projection_id }}/edit">Edit</a>
+          <form method="post" action="/projects/{{ project.project_id }}/projections/{{ projection.projection_id }}/write">
+            <button class="button subtle" type="submit">Write</button>
+          </form>
+          {% if projection.kind == "custom" %}
+          <form method="post" action="/projects/{{ project.project_id }}/projections/{{ projection.projection_id }}/delete">
+            <button class="button danger" type="submit">Delete</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

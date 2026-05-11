@@ -11,12 +11,23 @@
 
 {% if candidates %}
 <section class="panel">
+  <div class="panel-head">
+    <h2>Queue</h2>
+    <div class="actions">
+      <form method="post" id="batch-review-form"></form>
+      <button class="button accent" form="batch-review-form" type="submit" formaction="/projects/{{ project.project_id }}/review/batch-accept">Batch Accept</button>
+      <button class="button danger" form="batch-review-form" type="submit" formaction="/projects/{{ project.project_id }}/review/batch-reject">Batch Reject</button>
+    </div>
+  </div>
   <ul class="claim-list">
     {% for item in candidates %}
     {% set claim = item.claim %}
     {% set decision = item.decision %}
     <li>
       <div class="claim-row">
+        <label class="check-cell">
+          <input form="batch-review-form" type="checkbox" name="ids" value="{{ claim.claim_id }}">
+        </label>
         <div>
           <a href="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}">{{ claim.claim_id }}</a>
           <span class="pill">{{ claim.type_value }}</span>

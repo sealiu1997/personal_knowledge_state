@@ -35,6 +35,12 @@ class PolicyManager:
             return DomainPolicy.default_for(domain_value)
         return DomainPolicy.model_validate(read_yaml(policy_path))
 
+    def save_policy(self, policy: DomainPolicy) -> DomainPolicy:
+        domain_value = policy.domain_value
+        policy_path = self.domains_dir / domain_value / "claim_policy.yaml"
+        write_yaml(policy_path, policy.model_dump(mode="json", exclude_none=True))
+        return policy
+
     def validate_policy(self, domain: CapsuleDomain | str) -> list[str]:
         policy = self.load_policy(domain)
         issues: list[str] = []
