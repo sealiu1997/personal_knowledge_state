@@ -96,3 +96,24 @@ class MaintenanceReport(BaseModel):
 - **定时维护**：P2 只提供 CLI/Web 触发。后续可加 cron 或 daemon 模式。
 - **维护报告持久化**：当前只返回 report，不持久化。后续可写入 Audit Claim 或独立日志。
 - **智能维护**：基于 Claim 变更频率自动调整 `stale_after_days`。
+
+## P3.2 计划：完整性级联验证
+
+P3.2 将扩展维护引擎，增加两种检测：
+
+### 支撑链断裂检测
+
+当 Claim 的 `supporting_claims` 引用的 Claim 已被 superseded/expired/disputed 时，标记该 Claim 为"待重验证"。
+
+### Evidence 源头变更级联
+
+当 `sync_project` 检测到文件变更时，关联到引用该文件的 Claims，标记为"待重验证"。进一步通过 `supporting_claims` 向上级联传播——所有依赖被标记 Claim 的上层 Claim 也被标记。
+
+### 设计要点
+
+- `needs_reverification` 是计算标记（与 `stale` 同级），不是新的 ClaimStatus。
+- 级联仅向上传播，在 `last_verified` 晚于触发事件的 Claim 处停止。
+- 不自动 reject，人类或 Agent 通过 `verify_claim` 确认后清除标记。
+- 三层接口暴露：Kernel（`verify_claim`）→ CLI（`pks claim verify`）→ MCP（`verify_claim` tool）→ Web UI（重验证队列）。
+
+详见 [`docs/plans/2026-05-14-pks-p3.2-integrity-cascade-plan.md`](../plans/2026-05-14-pks-p3.2-integrity-cascade-plan.md)。

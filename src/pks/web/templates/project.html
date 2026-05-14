@@ -25,7 +25,39 @@
   <div><span>Expired</span><strong>{{ health.expired }}</strong></div>
   <div><span>Disputed</span><strong>{{ health.disputed }}</strong></div>
   <div><span>Evidence</span><strong>{{ health.evidence_issues|length }}</strong></div>
+  <div><span>Reverify</span><strong>{{ health.reverification_needed }}</strong></div>
 </section>
+
+{% if health.reverification_issues %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>Needs Re-verification</h2>
+  </div>
+  <ul class="claim-list">
+    {% for issue in health.reverification_issues %}
+    <li>
+      <a href="/projects/{{ project.project_id }}/claims/{{ issue.claim_id }}">{{ issue.claim_id }}</a>
+      <span class="pill tone">{{ issue.reason }}</span>
+      {% if issue.trigger_claim_id %}
+      <span class="pill">trigger: {{ issue.trigger_claim_id }}</span>
+      {% endif %}
+      {% if issue.trigger_source %}
+      <span class="pill">source: {{ issue.trigger_source }}</span>
+      {% endif %}
+      <div class="actions">
+        <form method="post" action="/projects/{{ project.project_id }}/claims/{{ issue.claim_id }}/verify">
+          <button class="button accent" type="submit">Confirm valid</button>
+        </form>
+        <a class="button subtle" href="/projects/{{ project.project_id }}/claims/{{ issue.claim_id }}/edit">Edit</a>
+        <form method="post" action="/projects/{{ project.project_id }}/claims/{{ issue.claim_id }}/expire">
+          <button class="button danger" type="submit">Expire</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
 
 <section class="panel">
   <div class="panel-head">

@@ -1,10 +1,19 @@
+from datetime import date
+
 import pytest
 
 from pks.kernel import Kernel
 from pks.mcp.auth import McpTokenManager
-from pks.mcp.tools.read import list_projects
-from pks.mcp.tools.write import submit_candidate_claim
-from pks.models import CapsuleDomain, ProjectMetadata, TokenPermission
+from pks.mcp.tools.read import get_reverification_issues, list_projects
+from pks.mcp.tools.write import submit_candidate_claim, verify_claim
+from pks.models import (
+    CapsuleDomain,
+    Claim,
+    ClaimType,
+    ProjectMetadata,
+    SupportingClaim,
+    TokenPermission,
+)
 
 
 def project() -> ProjectMetadata:
@@ -76,3 +85,37 @@ def test_mcp_write_tool_rejects_invalid_token(tmp_path) -> None:
 
     with pytest.raises(PermissionError):
         submit_candidate_claim(kernel, "bad-token", "pks", claim_payload())
+
+
+def test_mcp_reverification_tools_list_and_verify_with_token(tmp_path) -> None:
+    home = tmp_path / "pks-home"
+    kernel = Kernel(home)
+    kernel.create_capsule(project())
+    token = McpTokenManager(home).create_token("Agent", ["read", "write"])
+    submit_candidate_claim(kernel, token["token"], "pks", claim_payload())
+    support_id = kernel.list_candidates("pks")[0].claim_id
+    kernel.accept_candidate("pks", support_id)
+    dependent = Claim(
+        claim_id="I-MCP-DEPENDS",
+        subject="PKS MCP",
+        predicate="depends_on",
+        object="accepted facts",
+        type=ClaimType.INFERENCE,
+        domain=CapsuleDomain.DEV,
+        supporting_claims=[SupportingClaim(claim_id=support_id)],
+        confidence=0.8,
+    )
+    kernel.submit_candidate("pks", dependent)
+    kernel.accept_candidate("pks", "I-MCP-DEPENDS")
+    stored = kernel.load_claim("pks", "I-MCP-DEPENDS")
+    stored.last_verified = date(2025, 1, 1)
+    kernel.claims.claim_engine("pks").save_claim(stored)
+    kernel.expire_claim("pks", support_id)
+
+    issues = get_reverification_issues(kernel, "pks")
+    verified = verify_claim(kernel, token["token"], "pks", "I-MCP-DEPENDS")
+
+    assert issues[0]["claim_id"] == "I-MCP-DEPENDS"
+    assert issues[0]["reason"] == "support_chain_broken"
+    assert verified["claim_id"] == "I-MCP-DEPENDS"
+    assert get_reverification_issues(kernel, "pks") == []

@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from pks.cli import app
 from pks.kernel import Kernel
+from pks.models import CapsuleDomain, Claim, ClaimType, SupportingClaim
 
 runner = CliRunner()
 
@@ -173,6 +174,60 @@ def test_cli_maintain_enforces_expiry(tmp_path) -> None:
     assert result.exit_code == 0
     assert "Expired enforced: 1" in result.output
     assert kernel.load_claim("pks", "CLM-CLI-EXPIRY").status_value == "expired"
+
+
+def test_cli_maintain_reports_reverification_and_claim_verify_resolves(tmp_path) -> None:
+    home = tmp_path / "pks-home"
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            "pks",
+            "--name",
+            "PKS",
+            "--capsule-type",
+            "SoftwareCapsule",
+            "--domain",
+            "dev",
+            "--stage",
+            "P3.2",
+            "--home",
+            str(home),
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0
+    add_claim(home, "F-CLI-SUPPORT", "supports", "base fact", accept=True)
+    kernel = Kernel(home)
+    dependent = Claim(
+        claim_id="I-CLI-DEPENDS",
+        subject="PKS CLI",
+        predicate="depends_on",
+        object="supporting fact",
+        type=ClaimType.INFERENCE,
+        domain=CapsuleDomain.DEV,
+        supporting_claims=[SupportingClaim(claim_id="F-CLI-SUPPORT")],
+    )
+    kernel.submit_candidate("pks", dependent)
+    kernel.accept_candidate("pks", "I-CLI-DEPENDS")
+    stored = kernel.load_claim("pks", "I-CLI-DEPENDS")
+    stored.last_verified = date(2026, 1, 1)
+    kernel.claims.claim_engine("pks").save_claim(stored)
+    kernel.expire_claim("pks", "F-CLI-SUPPORT")
+
+    result = runner.invoke(app, ["maintain", "pks", "--home", str(home)])
+    verify = runner.invoke(
+        app,
+        ["claim", "verify", "pks", "I-CLI-DEPENDS", "--home", str(home)],
+    )
+    health = runner.invoke(app, ["health", "pks", "--home", str(home)])
+
+    assert result.exit_code == 0
+    assert "Re-verification needed: 1" in result.output
+    assert "- I-CLI-DEPENDS: support_chain_broken (F-CLI-SUPPORT)" in result.output
+    assert verify.exit_code == 0
+    assert "I-CLI-DEPENDS: verified" in verify.output
+    assert "Re-verification needed: 0" in health.output
 
 
 def test_cli_project_sync_reports_git_state(tmp_path) -> None:

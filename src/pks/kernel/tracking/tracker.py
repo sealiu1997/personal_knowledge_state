@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pks.models import Claim, EvidenceIssue, ProjectMetadata
@@ -26,6 +27,8 @@ class ProjectTracker:
             "git_available": False,
             "current_commit": None,
             "changed_paths": [],
+            "changed_at": None,
+            "synced_at": datetime.now(UTC).isoformat(),
             "evidence_issues": [issue.model_dump(mode="json") for issue in evidence_issues],
         }
         if root is None:
@@ -54,6 +57,8 @@ class ProjectTracker:
                 *paths,
             )
             result["changed_paths"] = [line for line in changed.splitlines() if line.strip()]
+            if result["changed_paths"]:
+                result["changed_at"] = self._commit_timestamp(root, current_commit)
 
         return result
 
@@ -114,3 +119,7 @@ class ProjectTracker:
         if completed.returncode != 0:
             return ""
         return completed.stdout.strip()
+
+    def _commit_timestamp(self, root: Path, commit: str) -> str:
+        timestamp = self._git(root, "show", "-s", "--format=%cI", commit)
+        return timestamp or datetime.now(UTC).isoformat()

@@ -54,6 +54,10 @@ def create_server(home: Path | None = None):
         return read_tools.get_health(kernel, project_id)
 
     @server.tool()
+    def get_reverification_issues(project_id: str) -> list[dict[str, Any]]:
+        return read_tools.get_reverification_issues(kernel, project_id)
+
+    @server.tool()
     def list_projects() -> list[dict[str, Any]]:
         return read_tools.list_projects(kernel)
 
@@ -64,6 +68,10 @@ def create_server(home: Path | None = None):
         claim: dict[str, Any],
     ) -> dict[str, Any]:
         return write_tools.submit_candidate_claim(kernel, token, project_id, claim)
+
+    @server.tool()
+    def verify_claim(token: str, project_id: str, claim_id: str) -> dict[str, Any]:
+        return write_tools.verify_claim(kernel, token, project_id, claim_id)
 
     return server
 

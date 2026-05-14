@@ -159,6 +159,18 @@ async def claim_edit_page(request: Request, project_id: str, claim_id: str):
     return RedirectResponse(f"/projects/{project_id}/claims/{claim_id}", status_code=303)
 
 
+@router.post("/projects/{project_id}/claims/{claim_id}/verify")
+def claim_verify_page(request: Request, project_id: str, claim_id: str):
+    kernel_from(request).verify_claim(project_id, claim_id)
+    return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+
+@router.post("/projects/{project_id}/claims/{claim_id}/expire")
+def claim_expire_page(request: Request, project_id: str, claim_id: str):
+    kernel_from(request).expire_claim(project_id, claim_id)
+    return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+
 @router.get("/projects/{project_id}/claims/{claim_id}/evidence-tree", response_class=HTMLResponse)
 def claim_evidence_tree(request: Request, project_id: str, claim_id: str):
     kernel = kernel_from(request)

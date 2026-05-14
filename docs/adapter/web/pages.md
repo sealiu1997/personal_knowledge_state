@@ -20,6 +20,7 @@
 | PKS.md 预览 | `/projects/{id}/pks-md` | 完整 PKS.md 聚合预览 | P3.1 |
 | 投影规则编辑 | `/projects/{id}/projections/{pid}/edit` | 左右分栏（规则 + 实时预览） | P3.1 |
 | 新建投影 | `/projects/{id}/projections/new` | 新建自定义 ProjectionSpec | P3.1 |
+| 重验证队列 | `/projects/{id}/reverification` | 待重验证 Claims + 确认/编辑/过期操作 | P3.2 |
 
 ---
 

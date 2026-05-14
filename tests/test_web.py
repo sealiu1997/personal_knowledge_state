@@ -170,6 +170,46 @@ def test_web_p3_projection_filter_and_support_tree(tmp_path) -> None:
     assert "F-WEB-SUPPORT" in tree.text
 
 
+def test_web_p32_reverification_queue_and_confirm_action(tmp_path) -> None:
+    home = tmp_path / "pks-home"
+    kernel = Kernel(home)
+    kernel.create_capsule(project())
+    base = claim("F-WEB-REVERIFY", "supporting base")
+    kernel.submit_candidate("pks", base)
+    kernel.accept_candidate("pks", "F-WEB-REVERIFY")
+    dependent = Claim(
+        claim_id="I-WEB-REVERIFY",
+        subject="PKS Web",
+        predicate="depends_on",
+        object="supporting base",
+        type=ClaimType.INFERENCE,
+        domain=CapsuleDomain.DEV,
+        tags=["project"],
+        supporting_claims=[SupportingClaim(claim_id="F-WEB-REVERIFY")],
+        confidence=0.7,
+    )
+    kernel.submit_candidate("pks", dependent)
+    kernel.accept_candidate("pks", "I-WEB-REVERIFY")
+    dependent = kernel.load_claim("pks", "I-WEB-REVERIFY")
+    dependent.last_verified = date(2026, 1, 1)
+    kernel.claims.claim_engine("pks").save_claim(dependent)
+    kernel.expire_claim("pks", "F-WEB-REVERIFY")
+    client = TestClient(create_app(home))
+
+    page = client.get("/projects/pks")
+    verified = client.post("/api/projects/pks/claims/I-WEB-REVERIFY/verify")
+    resolved = client.get("/projects/pks")
+
+    assert page.status_code == 200
+    assert "Needs Re-verification" in page.text
+    assert "I-WEB-REVERIFY" in page.text
+    assert "support_chain_broken" in page.text
+    assert "/projects/pks/claims/I-WEB-REVERIFY/expire" in page.text
+    assert verified.status_code == 200
+    assert verified.json()["claim_id"] == "I-WEB-REVERIFY"
+    assert "Needs Re-verification" not in resolved.text
+
+
 def test_web_p3_mcp_token_api(tmp_path) -> None:
     home = tmp_path / "pks-home"
     Kernel(home).create_capsule(project())

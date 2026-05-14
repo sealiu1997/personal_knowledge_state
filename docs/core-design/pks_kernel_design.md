@@ -217,19 +217,32 @@ PKS.md = BaseCapsule 投影 + 领域投影 + 自定义投影 + TasteAndStyle
 
 维护后由 facade 统一刷新投影。
 
+### P3.2 计划扩展
+
+P3.2 将增加两种检测任务：
+
+| 任务 | 方法 | 写 Audit |
+|------|------|----------|
+| 支撑链断裂检测 | `detect_broken_support` | 否（计算标记） |
+| Evidence 源头变更级联 | `detect_source_mutations` | 否（计算标记） |
+
+新增 Kernel 方法 `verify_claim(project_id, claim_id)` 用于确认 Claim 在源头变更后仍然有效。三层接口暴露：CLI / MCP / Web UI。
+
+详见 [`docs/plans/2026-05-14-pks-p3.2-integrity-cascade-plan.md`](../plans/2026-05-14-pks-p3.2-integrity-cascade-plan.md)。
+
 ## 当前边界
 
-已实现：
+已实现（P0–P3.1）：
 - 组合模式的 ProjectRegistry（PolicyManager、TasteManager、ProjectionSpecManager、ClaimIdGenerator、ProjectSeeder）
-- ClaimWorkflow 无 callback，facade 编排 render
+- ClaimWorkflow，facade 编排 render
 - HealthEngine 独立（只依赖 registry + tracker）
 - MaintenanceEngine 独立（只依赖 registry + tracker）
 - ProjectionService（render/integrity/spec CRUD/edit API）
-- Web UI（FastAPI + Jinja2 + htmx，纯 Kernel 适配层）
+- Web UI 完整管理界面（FastAPI + Jinja2 + htmx）
+- MCP Server（读写分离 + token 认证）
 - 全局 Claim ID 生成（`<type_code>-<sequence>`）
 
 暂缓：
 - SQLite 索引
-- MCP Server
-- 权限策略（Policy Engine）
-- Task Contract
+- 完整性级联验证（P3.2 计划中）
+- Obsidian/Notion 集成

@@ -232,6 +232,9 @@ class TrackingConfig(BaseModel):
     watched_paths: list[str] = Field(default_factory=list)
     auto_watch_evidence: bool = True
     last_synced_commit: str | None = None
+    last_synced_at: datetime | None = None
+    last_changed_paths: list[str] = Field(default_factory=list)
+    last_change_detected_at: datetime | None = None
 
     @field_validator("watched_paths")
     @classmethod
@@ -421,12 +424,22 @@ class ProjectionIssue(BaseModel):
     reason: str
 
 
+class ReVerificationIssue(BaseModel):
+    claim_id: str
+    reason: str
+    trigger_claim_id: str | None = None
+    trigger_source: str | None = None
+    detected_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class ClaimHealth(BaseModel):
     claim_id: str
     stale: bool = False
     expired: bool = False
     evidence_issues: list[EvidenceIssue] = Field(default_factory=list)
     min_support_issues: list[str] = Field(default_factory=list)
+    needs_reverification: bool = False
+    reverification_reason: str | None = None
 
 
 class HealthReport(BaseModel):
@@ -439,7 +452,9 @@ class HealthReport(BaseModel):
     disputed: int = 0
     superseded: int = 0
     min_support_violations: int = 0
+    reverification_needed: int = 0
     evidence_issues: list[EvidenceIssue] = Field(default_factory=list)
+    reverification_issues: list[ReVerificationIssue] = Field(default_factory=list)
     claims: list[ClaimHealth] = Field(default_factory=list)
 
     def as_summary(self) -> dict[str, Any]:
@@ -454,6 +469,7 @@ class HealthReport(BaseModel):
             "superseded": self.superseded,
             "min_support_violations": self.min_support_violations,
             "evidence_issue_count": len(self.evidence_issues),
+            "reverification_needed": self.reverification_needed,
         }
 
 
@@ -462,6 +478,8 @@ class MaintenanceReport(BaseModel):
     stale_found: int = 0
     expired_enforced: int = 0
     evidence_issues_found: int = 0
+    reverification_needed: int = 0
+    reverification_issues: list[ReVerificationIssue] = Field(default_factory=list)
     projections_refreshed: bool = False
     run_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

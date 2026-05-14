@@ -148,7 +148,7 @@ BaseCapsule（基础原型）
                     └── claims/
 ```
 
-P0 代码仍会在 Capsule 根目录创建部分 Markdown 文件和 `audit.log`。P1 需要把 Markdown 收口为 Kernel 管理的投影，并把 audit 迁移为 `type=inference`、`tags=["audit"]` 的 Claim。路径可以兼容旧实现，但语义必须改成 Claim-first。
+P0 代码的 `audit.log` 已被 Audit Claim 替代。所有 Markdown 已收口为 Kernel 管理的投影。
 
 ## TasteAndStyle 多级继承
 

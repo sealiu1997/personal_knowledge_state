@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from pks.kernel.capsule import ProjectRegistry
@@ -191,6 +191,23 @@ class Kernel:
         self._refresh_projections(project_id)
         return claim
 
+    def verify_claim(self, project_id: str, claim_id: str, today: date | None = None) -> Claim:
+        project = self.load_capsule(project_id)
+        engine = self.claims.claim_engine(project_id)
+        claim = engine.load_claim(claim_id)
+        claim.last_verified = today or date.today()
+        engine.save_claim(claim)
+        self.claims.audit_factory(project).record(
+            project,
+            "claim.verify",
+            subject=f"claim {claim_id}",
+            predicate="was_verified_by",
+            object_="kernel",
+            payload={"claim_id": claim_id},
+        )
+        self._refresh_projections(project_id)
+        return claim
+
     def supersede_claim(self, project_id: str, old_claim_id: str, new_claim: Claim) -> Claim:
         claim = self.claims.supersede_claim(project_id, old_claim_id, new_claim)
         self._refresh_projections(project_id)
@@ -263,6 +280,13 @@ class Kernel:
         current_commit = result.get("current_commit")
         if isinstance(current_commit, str) and current_commit:
             project.tracking.last_synced_commit = current_commit
+            project.tracking.last_synced_at = self._datetime_from_result(result.get("synced_at"))
+            changed_paths = result.get("changed_paths")
+            if isinstance(changed_paths, list) and changed_paths:
+                project.tracking.last_changed_paths = [str(path) for path in changed_paths]
+                project.tracking.last_change_detected_at = self._datetime_from_result(
+                    result.get("changed_at")
+                )
             self.registry.save_project(project)
             self.claims.audit_factory(project).record(
                 project,
@@ -426,3 +450,13 @@ class Kernel:
                     normalized.append(item)
             return normalized
         raise ValueError("supporting_claims must be a list")
+
+    def _datetime_from_result(self, value: object) -> datetime:
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str) and value:
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        return datetime.now(UTC)

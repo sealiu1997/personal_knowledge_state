@@ -141,6 +141,7 @@ def health(
     typer.echo(f"Superseded: {summary['superseded']}")
     typer.echo(f"Min support violations: {summary['min_support_violations']}")
     typer.echo(f"Evidence issues: {summary['evidence_issue_count']}")
+    typer.echo(f"Re-verification needed: {summary['reverification_needed']}")
 
 
 @app.command("maintain")
@@ -342,6 +343,16 @@ def claim_expire(
 ) -> None:
     claim = Kernel(home).expire_claim(project_id, claim_id)
     typer.echo(f"{claim.claim_id}: {claim.status_value}")
+
+
+@claim_app.command("verify")
+def claim_verify(
+    project_id: Annotated[str, typer.Argument(help="Project id.")],
+    claim_id: Annotated[str, typer.Argument(help="Claim id.")],
+    home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
+) -> None:
+    claim = Kernel(home).verify_claim(project_id, claim_id)
+    typer.echo(f"{claim.claim_id}: verified {claim.last_verified}")
 
 
 @claim_app.command("dispute")
@@ -641,4 +652,9 @@ def _echo_maintenance_report(report) -> None:
     typer.echo(f"Stale found: {report.stale_found}")
     typer.echo(f"Expired enforced: {report.expired_enforced}")
     typer.echo(f"Evidence issues: {report.evidence_issues_found}")
+    typer.echo(f"Re-verification needed: {report.reverification_needed}")
+    for issue in report.reverification_issues:
+        trigger = issue.trigger_claim_id or issue.trigger_source or ""
+        suffix = f" ({trigger})" if trigger else ""
+        typer.echo(f"- {issue.claim_id}: {issue.reason}{suffix}")
     typer.echo(f"Projections refreshed: {report.projections_refreshed}")

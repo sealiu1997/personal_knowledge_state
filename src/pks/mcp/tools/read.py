@@ -42,5 +42,12 @@ def get_health(kernel: Kernel, project_id: str) -> dict[str, Any]:
     return kernel.health_check(project_id).model_dump(mode="json")
 
 
+def get_reverification_issues(kernel: Kernel, project_id: str) -> list[dict[str, Any]]:
+    return [
+        issue.model_dump(mode="json")
+        for issue in kernel.health_check(project_id).reverification_issues
+    ]
+
+
 def list_projects(kernel: Kernel) -> list[dict[str, Any]]:
     return [project.model_dump(mode="json") for project in kernel.list_capsules()]

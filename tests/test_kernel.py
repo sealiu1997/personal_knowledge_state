@@ -195,6 +195,134 @@ def test_maintenance_reports_stale_and_evidence_issues(tmp_path) -> None:
     assert report.evidence_issues_found == 1
 
 
+def test_p32_maintenance_flags_broken_support_and_verify_resolves(tmp_path) -> None:
+    kernel = Kernel(tmp_path / "pks-home")
+    kernel.create_capsule(project(tmp_path))
+    submit_and_accept(kernel, claim("F-SUPPORT"))
+    dependent = Claim(
+        claim_id="I-DEPENDS",
+        subject="PKS inference",
+        predicate="depends_on",
+        object="supporting fact",
+        type=ClaimType.INFERENCE,
+        domain=CapsuleDomain.DEV,
+        tags=["architecture"],
+        supporting_claims=[SupportingClaim(claim_id="F-SUPPORT")],
+        confidence=0.8,
+    )
+    submit_and_accept(kernel, dependent)
+    dependent = kernel.load_claim("pks", "I-DEPENDS")
+    dependent.last_verified = date(2026, 1, 1)
+    kernel.claims.claim_engine("pks").save_claim(dependent)
+
+    kernel.expire_claim("pks", "F-SUPPORT")
+    report = kernel.maintenance.run("pks", today=date(2026, 5, 14), evidence=False)
+    issue = report.reverification_issues[0]
+    verified = kernel.verify_claim("pks", "I-DEPENDS", today=date(2026, 5, 14))
+    resolved = kernel.health_check("pks", today=date(2026, 5, 14))
+    audit_predicates = [
+        audit_claim.predicate for audit_claim in kernel.list_claims("pks", tag="audit")
+    ]
+
+    assert report.reverification_needed == 1
+    assert issue.claim_id == "I-DEPENDS"
+    assert issue.reason == "support_chain_broken"
+    assert issue.trigger_claim_id == "F-SUPPORT"
+    assert kernel.load_claim("pks", "I-DEPENDS").status_value == ClaimStatus.ACCEPTED.value
+    assert verified.last_verified == date(2026, 5, 14)
+    assert resolved.reverification_needed == 0
+    assert "was_verified_by" in audit_predicates
+
+
+def test_p32_source_mutation_cascades_and_stops_at_verified_claims(tmp_path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is not available")
+
+    today = date.today()
+    old_date = date(2026, 1, 1)
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "tracked.md").write_text("v1", encoding="utf-8")
+    run_git(project_root, "init")
+    run_git(project_root, "add", "tracked.md")
+    run_git(project_root, "commit", "-m", "initial")
+
+    kernel = Kernel(tmp_path / "pks-home")
+    metadata = project(tmp_path, project_root)
+    metadata.tracking.watched_paths = ["tracked.md"]
+    kernel.create_capsule(metadata)
+    kernel.sync_project("pks")
+
+    source_claim = claim("F-SOURCE", source_ref="tracked.md", excerpt="v1")
+    source_claim.last_verified = old_date
+    submit_and_accept(kernel, source_claim)
+    inference = Claim(
+        claim_id="I-CASCADE",
+        subject="PKS inference",
+        predicate="depends_on",
+        object="tracked source",
+        type=ClaimType.INFERENCE,
+        domain=CapsuleDomain.DEV,
+        tags=["architecture"],
+        supporting_claims=[SupportingClaim(claim_id="F-SOURCE")],
+        confidence=0.8,
+    )
+    preference = Claim(
+        claim_id="P-CASCADE",
+        subject="PKS preference",
+        predicate="depends_on",
+        object="inference",
+        type=ClaimType.PREFERENCE,
+        domain=CapsuleDomain.DEV,
+        tags=["architecture"],
+        supporting_claims=[SupportingClaim(claim_id="I-CASCADE")],
+        evidence=[evidence("manual", "用户手动设定")],
+        confidence=0.8,
+    )
+    stop_claim = Claim(
+        claim_id="P-STOP",
+        subject="PKS stop",
+        predicate="depends_on",
+        object="inference",
+        type=ClaimType.PREFERENCE,
+        domain=CapsuleDomain.DEV,
+        tags=["architecture"],
+        supporting_claims=[SupportingClaim(claim_id="I-CASCADE")],
+        evidence=[evidence("manual", "用户手动设定")],
+        confidence=0.8,
+    )
+    submit_and_accept(kernel, inference)
+    submit_and_accept(kernel, preference)
+    submit_and_accept(kernel, stop_claim)
+    for claim_id, verified_at in {
+        "I-CASCADE": old_date,
+        "P-CASCADE": old_date,
+        "P-STOP": today,
+    }.items():
+        stored = kernel.load_claim("pks", claim_id)
+        stored.last_verified = verified_at
+        kernel.claims.claim_engine("pks").save_claim(stored)
+
+    (project_root / "tracked.md").write_text("v2", encoding="utf-8")
+    run_git(project_root, "add", "tracked.md")
+    run_git(project_root, "commit", "-m", "update tracked")
+
+    report = kernel.maintenance.run("pks", today=today, expiry=False)
+    issues = {issue.claim_id: issue for issue in report.reverification_issues}
+    kernel.verify_claim("pks", "F-SOURCE", today=today)
+    resolved = kernel.health_check("pks", today=today)
+
+    assert report.reverification_needed == 3
+    assert issues["F-SOURCE"].reason == "evidence_source_changed"
+    assert issues["F-SOURCE"].trigger_source == "tracked.md"
+    assert issues["I-CASCADE"].reason == "cascade_dependency"
+    assert issues["I-CASCADE"].trigger_claim_id == "F-SOURCE"
+    assert issues["P-CASCADE"].reason == "cascade_dependency"
+    assert issues["P-CASCADE"].trigger_claim_id == "I-CASCADE"
+    assert "P-STOP" not in issues
+    assert {issue.claim_id for issue in resolved.reverification_issues} == set()
+
+
 def test_projection_can_be_written_without_being_source_of_truth(tmp_path) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()

@@ -62,6 +62,16 @@ async def api_patch_claim(request: Request, project_id: str, claim_id: str) -> d
     return dump_model(result)
 
 
+@router.post("/api/projects/{project_id}/claims/{claim_id}/verify")
+def api_verify_claim(request: Request, project_id: str, claim_id: str) -> dict:
+    return dump_model(kernel_from(request).verify_claim(project_id, claim_id))
+
+
+@router.post("/api/projects/{project_id}/claims/{claim_id}/expire")
+def api_expire_claim(request: Request, project_id: str, claim_id: str) -> dict:
+    return dump_model(kernel_from(request).expire_claim(project_id, claim_id))
+
+
 @router.get("/api/projects/{project_id}/claims/{claim_id}/evidence-tree")
 def api_evidence_tree(request: Request, project_id: str, claim_id: str) -> dict:
     kernel = kernel_from(request)

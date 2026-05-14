@@ -111,6 +111,7 @@ Agent 通过 MCP 与 PKS 交互的典型流程：
 
 ## 后续扩展点
 
+- **P3.2 完整性验证工具**：`verify_claim`（确认 Claim 在源头变更后仍有效）、`get_reverification_issues`（列出需要重验证的 Claims）。详见 [P3.2 计划](../plans/2026-05-14-pks-p3.2-integrity-cascade-plan.md)。
 - **更多可写工具**：`submit_projection_claim`（通过投影提交）、`patch_projection_claim`（修改已有 Claim）
 - **批量提交**：一次提交多条 Claims
 - **上下文感知**：根据 Agent 当前工作文件自动筛选相关 Claims
