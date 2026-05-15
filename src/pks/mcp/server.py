@@ -70,6 +70,14 @@ def create_server(home: Path | None = None):
         return write_tools.submit_candidate_claim(kernel, token, project_id, claim)
 
     @server.tool()
+    def create_capsule(
+        token: str,
+        project_id: str,
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        return write_tools.create_capsule(kernel, token, project_id, metadata)
+
+    @server.tool()
     def verify_claim(token: str, project_id: str, claim_id: str) -> dict[str, Any]:
         return write_tools.verify_claim(kernel, token, project_id, claim_id)
 

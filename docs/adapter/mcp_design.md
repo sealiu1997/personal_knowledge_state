@@ -66,6 +66,8 @@ mcp_tokens:
 | 工具 | Kernel 方法 | 输入 | 输出 |
 |------|-------------|------|------|
 | `submit_candidate_claim` | `submit_candidate` | `project_id` + Claim 字段 | ReviewDecision |
+| `create_capsule` | `create_capsule` | `token`, `project_id`, `metadata` | Project metadata + capsule path |
+| `verify_claim` | `verify_claim` | `token`, `project_id`, `claim_id` | Updated Claim |
 
 Agent 提交的 Claim 必须满足 min_support 规则，否则 Kernel 直接 reject。通过 min_support 的 Claim 进入 Candidate Queue，等待人类审核。
 

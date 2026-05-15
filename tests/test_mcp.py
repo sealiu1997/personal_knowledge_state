@@ -5,7 +5,7 @@ import pytest
 from pks.kernel import Kernel
 from pks.mcp.auth import McpTokenManager
 from pks.mcp.tools.read import get_reverification_issues, list_projects
-from pks.mcp.tools.write import submit_candidate_claim, verify_claim
+from pks.mcp.tools.write import create_capsule, submit_candidate_claim, verify_claim
 from pks.models import (
     CapsuleDomain,
     Claim,
@@ -76,6 +76,40 @@ def test_mcp_read_and_write_tools_use_kernel_and_token_gate(tmp_path) -> None:
     assert decision["action"] == "auto_accept"
     assert candidates[0].claim_id.startswith("F-")
     assert candidates[0].created_by == "agent:mcp"
+
+
+def test_mcp_create_capsule_tool_uses_token_and_metadata_aliases(tmp_path) -> None:
+    home = tmp_path / "pks-home"
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    kernel = Kernel(home)
+    token = McpTokenManager(home).create_token("Agent", ["read", "write"])
+
+    created = create_capsule(
+        kernel,
+        token["token"],
+        "dogfood",
+        {
+            "name": "Dogfood",
+            "capsule_type": "SoftwareCapsule",
+            "domain": "dev",
+            "stage": "P3.2",
+            "current_goal": "Exercise MCP capsule creation",
+            "project_path": str(project_root),
+            "git_remote": "git@example.invalid:dogfood.git",
+            "watched_paths": "src,docs",
+        },
+    )
+    loaded = kernel.load_capsule("dogfood")
+
+    assert created["project"]["project_id"] == "dogfood"
+    assert created["capsule_path"].endswith("capsules/dogfood")
+    assert loaded.name == "Dogfood"
+    assert loaded.tracking.project_path == project_root
+    assert loaded.tracking.git_remote == "git@example.invalid:dogfood.git"
+    assert loaded.tracking.watched_paths == ["src", "docs"]
+    with pytest.raises(PermissionError):
+        create_capsule(kernel, "bad-token", "bad", {"name": "Bad"})
 
 
 def test_mcp_write_tool_rejects_invalid_token(tmp_path) -> None:

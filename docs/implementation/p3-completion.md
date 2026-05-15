@@ -1,4 +1,4 @@
-# P3 + P3.1 实施完成记录
+# P3 + P3.1 + P3.2 实施完成记录
 
 来源：
 - `docs/core-design/pks_product_plan_v2.md`
@@ -8,7 +8,7 @@
 
 ## MVP 完成状态
 
-P0 → P3.1 全部完成。系统可用于 dogfood。
+P0 → P3.2 全部完成。系统可用于 dogfood，并已提供 Codex skill 封装。
 
 ## 实现总览
 
@@ -19,12 +19,14 @@ P0 → P3.1 全部完成。系统可用于 dogfood。
 | P2 | 自动维护 + 最小 Web UI + 代码重构（组合模式） | 36 tests |
 | P3 | MCP Server + Token 认证 + Web UI 完善（批量审核/Claim 新建/编辑/证据链/配置） | 45 tests |
 | P3.1 | 投影预览/编辑 + PKS.md 预览 + 策略编辑 + claims.py 拆分 | 48 tests |
+| P3.2 | 支撑链断裂检测 + Evidence 变更级联 + 重验证队列 + CLI/Web/MCP verify | 53 tests |
+| Skill | `skills/pks-agent` Codex skill 封装 + `agents/openai.yaml` 元数据 | quick_validate passed |
 
 ## 代码统计
 
 - Python 源文件：60
 - 总代码行数：~5300
-- 测试数量：48
+- 测试数量：53
 - Lint：全部通过
 
 ## 模块结构
@@ -60,8 +62,10 @@ src/pks/
 ## 验证
 
 ```bash
-.venv/bin/python -m pytest -q    # 48 passed
+.venv/bin/python -m pytest -q    # 53 passed
 .venv/bin/python -m ruff check . # All checks passed
+.venv/bin/python ~/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/pks-agent
+# Skill is valid!
 ```
 
 ## 下一步

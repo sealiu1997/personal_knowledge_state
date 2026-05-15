@@ -255,9 +255,12 @@ class HealthEngine:
         if claim.status_value == ClaimStatus.SUPERSEDED.value and claim.superseded_by:
             superseding = claims_by_id.get(claim.superseded_by)
             if superseding is not None:
-                return superseding.created_at
+                return self._not_after(superseding.created_at, fallback)
         if claim.valid_until is not None:
-            return datetime.combine(claim.valid_until, time.min, tzinfo=UTC)
+            return self._not_after(
+                datetime.combine(claim.valid_until, time.min, tzinfo=UTC),
+                fallback,
+            )
         audit_predicates = {
             ClaimStatus.EXPIRED.value: "was_expired_by",
             ClaimStatus.DISPUTED.value: "was_disputed_by",
@@ -273,8 +276,18 @@ class HealthEngine:
                 and item.predicate == predicate
             ]
             if audit_times:
-                return max(audit_times)
-        return claim.created_at or fallback
+                return self._not_after(max(audit_times), fallback)
+        return self._not_after(claim.created_at or fallback, fallback)
+
+    def _not_after(self, detected_at: datetime, reference: datetime) -> datetime:
+        detected_at = self._as_utc(detected_at)
+        reference = self._as_utc(reference)
+        return detected_at if detected_at <= reference else reference
+
+    def _as_utc(self, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     def _verified_after(self, claim: Claim, detected_at: datetime) -> bool:
         if claim.last_verified is None:

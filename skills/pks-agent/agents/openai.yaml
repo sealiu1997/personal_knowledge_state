@@ -1,0 +1,4 @@
+interface:
+  display_name: "PKS Agent"
+  short_description: "Use PKS project knowledge through MCP"
+  default_prompt: "Use $pks-agent to read the project knowledge state before making changes."
