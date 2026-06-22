@@ -7,6 +7,7 @@ CAPSULE_TYPE_PROJECTIONS: dict[str, tuple[str, ...]] = {
     "PluginCapsule": ("project-summary", "journal", "dev-architecture"),
     "ArticleCapsule": ("project-summary", "journal", "content-outline", "content-facts"),
     "VideoCapsule": ("project-summary", "journal", "content-outline"),
+    "MarketContext": ("project-summary", "market-signals", "market-narratives"),
     "DisciplineCapsule": (
         "project-summary",
         "journal",
@@ -89,6 +90,29 @@ PROJECTION_SPECS: dict[str, ProjectionSpec] = {
         output_path="projections/hypotheses.md",
         title="Hypotheses",
         filters=ProjectionFilters(types=["inference"], tags=["hypothesis"]),
+        order=["created_at"],
+    ),
+    "market-signals": ProjectionSpec(
+        projection_id="market-signals",
+        output_path="projections/market_signals.md",
+        title="Market Signals",
+        description="Active factual market signals: price moves, macro releases, calendar events.",
+        filters=ProjectionFilters(
+            types=["factual"],
+            tags=["macro", "price", "calendar", "actual_release"],
+        ),
+        order=["created_at"],
+        group_by="predicate",
+    ),
+    "market-narratives": ProjectionSpec(
+        projection_id="market-narratives",
+        output_path="projections/market_narratives.md",
+        title="Market Narratives",
+        description="Active market narratives and inferences with evidence chains.",
+        filters=ProjectionFilters(
+            types=["inference"],
+            tags=["narrative", "theme"],
+        ),
         order=["created_at"],
     ),
 }

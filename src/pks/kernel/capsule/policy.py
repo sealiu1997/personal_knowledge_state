@@ -8,6 +8,7 @@ from pks.models import CapsuleDomain, ClaimType, DomainPolicy
 DOMAIN_TYPE_SLUGS: dict[str, tuple[str, ...]] = {
     CapsuleDomain.DEV.value: ("software", "plugin"),
     CapsuleDomain.CONTENT.value: ("article", "video", "game"),
+    CapsuleDomain.MARKET.value: ("market-context",),
     CapsuleDomain.RESEARCH.value: ("discipline", "model"),
 }
 
@@ -87,6 +88,10 @@ class PolicyManager:
         for claim_type, rule in default_policy.lifecycle.items():
             if claim_type not in policy.lifecycle:
                 policy.lifecycle[claim_type] = rule
+                changed = True
+        for tag, rule in default_policy.tag_lifecycle.items():
+            if tag not in policy.tag_lifecycle:
+                policy.tag_lifecycle[tag] = rule
                 changed = True
         for claim_type, rule in default_policy.min_support.items():
             if claim_type not in policy.min_support:

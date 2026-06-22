@@ -2,25 +2,45 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pks.web.routes.common import dump_model, kernel_from, templates_from
 
 router = APIRouter()
 
+DEFAULT_PAGE_SIZE = 25
+
 
 @router.get("/projects/{project_id}/review", response_class=HTMLResponse)
-def review_workbench(request: Request, project_id: str):
+def review_workbench(
+    request: Request,
+    project_id: str,
+    limit: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    tag: str | None = Query(None),
+    claim_type: str | None = Query(None, alias="type"),
+):
     kernel = kernel_from(request)
-    candidates = [
-        {"claim": claim, "decision": kernel.review_candidate(project_id, claim.claim_id)}
-        for claim in kernel.list_candidates(project_id)
-    ]
+    all_candidates = kernel.list_candidates(project_id)
+    if tag:
+        all_candidates = [c for c in all_candidates if tag in c.tags]
+    if claim_type:
+        all_candidates = [c for c in all_candidates if c.type_value == claim_type]
+    total = len(all_candidates)
+    page = all_candidates[offset : offset + limit]
     return templates_from(request).TemplateResponse(
         request,
         "review.html",
-        {"project": kernel.load_capsule(project_id), "candidates": candidates},
+        {
+            "project": kernel.load_capsule(project_id),
+            "candidates": [{"claim": c} for c in page],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_next": offset + limit < total,
+            "has_prev": offset > 0,
+        },
     )
 
 
@@ -65,8 +85,27 @@ async def batch_reject_page(project_id: str, request: Request):
 
 
 @router.get("/api/projects/{project_id}/candidates")
-def api_candidates(request: Request, project_id: str) -> list[dict]:
-    return [dump_model(claim) for claim in kernel_from(request).list_candidates(project_id)]
+def api_candidates(
+    request: Request,
+    project_id: str,
+    limit: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    tag: str | None = Query(None),
+    claim_type: str | None = Query(None, alias="type"),
+) -> dict:
+    all_candidates = kernel_from(request).list_candidates(project_id)
+    if tag:
+        all_candidates = [c for c in all_candidates if tag in c.tags]
+    if claim_type:
+        all_candidates = [c for c in all_candidates if c.type_value == claim_type]
+    total = len(all_candidates)
+    page = all_candidates[offset : offset + limit]
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "items": [dump_model(c) for c in page],
+    }
 
 
 @router.get("/api/projects/{project_id}/candidates/{candidate_id}")

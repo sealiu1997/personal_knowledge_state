@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class CapsuleDomain(StrEnum):
     CONTENT = "content"
     DEV = "dev"
+    MARKET = "market"
     RESEARCH = "research"
 
 
@@ -141,6 +142,7 @@ class Claim(BaseModel):
 
     supporting_claims: list[SupportingClaim] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     status: ClaimStatus = ClaimStatus.CANDIDATE
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
@@ -244,6 +246,8 @@ class TrackingConfig(BaseModel):
 
 class LifecycleRule(BaseModel):
     stale_after_days: int | None = Field(default=None, ge=1)
+    valid_for_days: int | None = Field(default=None, ge=1)
+    valid_for_hours: int | None = Field(default=None, ge=1)
     auto_accept_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
@@ -252,29 +256,42 @@ class DomainPolicy(BaseModel):
 
     domain: CapsuleDomain
     lifecycle: dict[str, LifecycleRule] = Field(default_factory=dict)
+    tag_lifecycle: dict[str, LifecycleRule] = Field(default_factory=dict)
     min_support: dict[str, MinSupportRule] = Field(default_factory=dict)
     manual_review_types: list[str] = Field(default_factory=list)
 
     @classmethod
     def default_for(cls, domain: CapsuleDomain | str) -> DomainPolicy:
         domain_value = domain.value if isinstance(domain, StrEnum) else str(domain)
+        is_dev = domain_value == CapsuleDomain.DEV.value
+        is_market = domain_value == CapsuleDomain.MARKET.value
         stale_defaults: dict[str, int | None] = {
-            ClaimType.FACTUAL.value: 180 if domain_value == CapsuleDomain.DEV.value else 365,
-            ClaimType.INFERENCE.value: 90 if domain_value == CapsuleDomain.DEV.value else 180,
+            ClaimType.FACTUAL.value: 30 if is_market else (180 if is_dev else 365),
+            ClaimType.INFERENCE.value: 14 if is_market else (90 if is_dev else 180),
             ClaimType.PREFERENCE.value: None,
             ClaimType.CONSTRAINT.value: None,
         }
+        auto_accept_threshold = 0.95 if is_market else 0.85
+        tag_lifecycle: dict[str, LifecycleRule] = {}
+        if is_market:
+            tag_lifecycle = {
+                "intraday": LifecycleRule(valid_for_hours=24),
+                "scheduled": LifecycleRule(valid_for_days=1),
+                "actual_release": LifecycleRule(valid_for_days=30),
+                "narrative": LifecycleRule(stale_after_days=14, valid_for_days=30),
+            }
         return cls(
             domain=domain_value,
             lifecycle={
                 claim_type.value: LifecycleRule(
                     stale_after_days=stale_defaults[claim_type.value],
-                    auto_accept_threshold=0.85
+                    auto_accept_threshold=auto_accept_threshold
                     if claim_type == ClaimType.FACTUAL
                     else None,
                 )
                 for claim_type in ClaimType
             },
+            tag_lifecycle=tag_lifecycle,
             manual_review_types=[
                 ClaimType.INFERENCE.value,
                 ClaimType.PREFERENCE.value,
@@ -319,6 +336,12 @@ class DomainPolicy(BaseModel):
     def lifecycle_for(self, claim_type: ClaimType | str) -> LifecycleRule:
         claim_type_value = claim_type.value if isinstance(claim_type, StrEnum) else str(claim_type)
         return self.lifecycle.get(claim_type_value, LifecycleRule())
+
+    def tag_lifecycle_for(self, tags: list[str]) -> LifecycleRule | None:
+        for tag in tags:
+            if tag in self.tag_lifecycle:
+                return self.tag_lifecycle[tag]
+        return None
 
     def min_support_for(self, claim_type: ClaimType | str) -> MinSupportRule:
         claim_type_value = claim_type.value if isinstance(claim_type, StrEnum) else str(claim_type)

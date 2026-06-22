@@ -4,7 +4,7 @@
 <section class="page-head split">
   <div>
     <p class="eyebrow">{{ project.name }}</p>
-    <h1>Candidate Review</h1>
+    <h1>Candidate Review <span class="muted">({{ total }})</span></h1>
   </div>
   <a class="button subtle" href="/projects/{{ project.project_id }}">Project</a>
 </section>
@@ -12,7 +12,7 @@
 {% if candidates %}
 <section class="panel">
   <div class="panel-head">
-    <h2>Queue</h2>
+    <h2>Queue · {{ offset + 1 }}–{{ [offset + limit, total] | min }} of {{ total }}</h2>
     <div class="actions">
       <form method="post" id="batch-review-form"></form>
       <button class="button accent" form="batch-review-form" type="submit" formaction="/projects/{{ project.project_id }}/review/batch-accept">Batch Accept</button>
@@ -22,7 +22,6 @@
   <ul class="claim-list">
     {% for item in candidates %}
     {% set claim = item.claim %}
-    {% set decision = item.decision %}
     <li>
       <div class="claim-row">
         <label class="check-cell">
@@ -31,14 +30,14 @@
         <div>
           <a href="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}">{{ claim.claim_id }}</a>
           <span class="pill">{{ claim.type_value }}</span>
-          <span class="pill tone">{{ decision.action }}</span>
+          {% if claim.tags %}<span class="muted">{{ claim.tags | join(', ') }}</span>{% endif %}
           <p>{{ claim.display_content() }}</p>
         </div>
         <div class="actions">
-          <form method="post" action="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/accept" hx-post="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/accept">
+          <form method="post" action="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/accept">
             <button class="icon-button accept" title="Accept" type="submit">✓</button>
           </form>
-          <form method="post" action="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/reject" hx-post="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/reject">
+          <form method="post" action="/projects/{{ project.project_id }}/review/{{ claim.claim_id }}/reject">
             <button class="icon-button reject" title="Reject" type="submit">×</button>
           </form>
         </div>
@@ -46,6 +45,16 @@
     </li>
     {% endfor %}
   </ul>
+  {% if has_prev or has_next %}
+  <nav class="pagination">
+    {% if has_prev %}
+    <a class="button subtle" href="/projects/{{ project.project_id }}/review?limit={{ limit }}&offset={{ [offset - limit, 0] | max }}">← Previous</a>
+    {% endif %}
+    {% if has_next %}
+    <a class="button subtle" href="/projects/{{ project.project_id }}/review?limit={{ limit }}&offset={{ offset + limit }}">Next →</a>
+    {% endif %}
+  </nav>
+  {% endif %}
 </section>
 {% else %}
 <section class="empty-state"><h2>Queue clear</h2><p>No candidate claims.</p></section>

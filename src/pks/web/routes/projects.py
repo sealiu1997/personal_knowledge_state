@@ -11,10 +11,15 @@ router = APIRouter()
 @router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     kernel = kernel_from(request)
-    projects = [
-        {"project": project, "health": kernel.health_check(project.project_id)}
-        for project in kernel.list_capsules()
-    ]
+    projects = []
+    for project in kernel.list_capsules():
+        claim_count = len(kernel.list_claims(project.project_id))
+        candidate_count = len(kernel.list_candidates(project.project_id))
+        projects.append({
+            "project": project,
+            "claim_count": claim_count,
+            "candidate_count": candidate_count,
+        })
     return templates_from(request).TemplateResponse(
         request,
         "dashboard.html",
@@ -55,3 +60,9 @@ def api_project(request: Request, project_id: str) -> dict:
         "project": dump_model(kernel.load_capsule(project_id)),
         "health": dump_model(kernel.health_check(project_id)),
     }
+
+
+@router.get("/api/projects/{project_id}/health")
+def api_project_health(request: Request, project_id: str) -> dict:
+    kernel = kernel_from(request)
+    return dump_model(kernel.health_check(project_id))

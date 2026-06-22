@@ -12,19 +12,18 @@
 <section class="project-grid">
   {% for item in projects %}
   {% set project = item.project %}
-  {% set health = item.health %}
-  <article class="card project-card">
+  <article class="card project-card" data-project-id="{{ project.project_id }}">
     <div>
       <p class="eyebrow">{{ project.domain_value }} · {{ project.capsule_type }}</p>
       <h2><a href="/projects/{{ project.project_id }}">{{ project.name }}</a></h2>
       <p class="muted">{{ project.project_id }}</p>
     </div>
     <dl class="stat-grid">
-      <div><dt>Accepted</dt><dd>{{ health.accepted }}</dd></div>
-      <div><dt>Candidates</dt><dd>{{ health.candidate }}</dd></div>
-      <div><dt>Stale</dt><dd>{{ health.stale }}</dd></div>
-      <div><dt>Evidence</dt><dd>{{ health.evidence_issues|length }}</dd></div>
-      <div><dt>Reverify</dt><dd>{{ health.reverification_needed }}</dd></div>
+      <div><dt>Claims</dt><dd>{{ item.claim_count }}</dd></div>
+      <div><dt>Candidates</dt><dd>{{ item.candidate_count }}</dd></div>
+      <div><dt>Stale</dt><dd class="health-stale">…</dd></div>
+      <div><dt>Evidence</dt><dd class="health-evidence">…</dd></div>
+      <div><dt>Reverify</dt><dd class="health-reverify">…</dd></div>
     </dl>
     <div class="actions">
       <a class="button" href="/projects/{{ project.project_id }}/review">Review</a>
@@ -33,6 +32,23 @@
   </article>
   {% endfor %}
 </section>
+<script>
+document.querySelectorAll('[data-project-id]').forEach(card => {
+  const pid = card.dataset.projectId;
+  fetch(`/api/projects/${pid}/health`)
+    .then(r => r.json())
+    .then(h => {
+      card.querySelector('.health-stale').textContent = h.stale;
+      card.querySelector('.health-evidence').textContent = (h.evidence_issues || []).length;
+      card.querySelector('.health-reverify').textContent = h.reverification_needed;
+    })
+    .catch(() => {
+      card.querySelector('.health-stale').textContent = '–';
+      card.querySelector('.health-evidence').textContent = '–';
+      card.querySelector('.health-reverify').textContent = '–';
+    });
+});
+</script>
 {% else %}
 <section class="empty-state">
   <h2>No capsules yet</h2>

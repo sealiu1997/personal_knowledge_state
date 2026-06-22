@@ -24,6 +24,10 @@
     <div><dt>Last verified</dt><dd>{{ claim.last_verified or "not set" }}</dd></div>
     <div><dt>Valid until</dt><dd>{{ claim.valid_until or "open" }}</dd></div>
   </dl>
+  {% if claim.metadata %}
+  <h3>Metadata</h3>
+  <pre class="metadata-block">{{ claim.metadata | tojson(indent=2) }}</pre>
+  {% endif %}
   <h3>Evidence</h3>
   <ul class="evidence-list">
     {% for evidence in claim.evidence %}

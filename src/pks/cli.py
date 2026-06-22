@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
+import json
+
 import typer
 import yaml
 
@@ -294,9 +296,21 @@ def claim_add(
         str,
         typer.Option("--supporting-claims", help="Comma-separated accepted support Claim ids."),
     ] = "",
+    valid_until: Annotated[
+        str | None,
+        typer.Option("--valid-until", help="Expiry date (YYYY-MM-DD)."),
+    ] = None,
+    metadata_json: Annotated[
+        str | None,
+        typer.Option("--metadata", help="JSON string of structured metadata."),
+    ] = None,
     home: Annotated[Path | None, typer.Option(help="Override PKS home path.")] = None,
 ) -> None:
+    from datetime import date as date_type
+
     project = Kernel(home).load_capsule(project_id)
+    parsed_valid_until = date_type.fromisoformat(valid_until) if valid_until else None
+    parsed_metadata = json.loads(metadata_json) if metadata_json else {}
     claim = Claim(
         claim_id=claim_id,
         subject=subject,
@@ -311,6 +325,8 @@ def claim_add(
         ],
         confidence=confidence,
         created_by=created_by,
+        valid_until=parsed_valid_until,
+        metadata=parsed_metadata,
         evidence=[
             Evidence(
                 source_ref=source_ref,

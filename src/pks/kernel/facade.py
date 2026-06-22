@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from pks.kernel.capsule import ProjectRegistry
@@ -157,6 +157,18 @@ class Kernel:
         data["supporting_claims"] = self._normalize_supporting_claims(
             data.get("supporting_claims")
         )
+        if not data.get("valid_until"):
+            policy = self.registry.load_policy(project.domain)
+            tag_rule = policy.tag_lifecycle_for(data["tags"])
+            if tag_rule:
+                if tag_rule.valid_for_hours:
+                    data["valid_until"] = (
+                        date.today() + timedelta(hours=tag_rule.valid_for_hours)
+                    ).isoformat()
+                elif tag_rule.valid_for_days:
+                    data["valid_until"] = (
+                        date.today() + timedelta(days=tag_rule.valid_for_days)
+                    ).isoformat()
         return Claim.model_validate(data)
 
     def list_candidates(self, project_id: str) -> list[Claim]:
